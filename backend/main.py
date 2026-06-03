@@ -28,20 +28,24 @@ app.add_middleware(
 
 @app.get("/", response_class=HTMLResponse)
 def root_welcome():
-    return """
+    gemini_status_color = "#4A7C2F" if gemini_ready else "#C62828"
+    gemini_status_bg = "#E8F5E9" if gemini_ready else "#FFEBEE"
+    gemini_status_text = "● GEMINI VISION ENGINE: ACTIVE" if gemini_ready else "● GEMINI VISION ENGINE: INACTIVE (FALLBACK TO YOLOv8)"
+    
+    return f"""
     <html>
         <head>
             <title>GeoKisan / GeoFarmer Telemetry Core</title>
             <style>
-                body {
+                body {{
                     font-family: 'DM Sans', sans-serif;
                     background-color: #FAF8F3;
                     color: #1C2410;
                     margin: 0;
                     padding: 40px;
                     text-align: center;
-                }
-                .container {
+                }}
+                .container {{
                     max-width: 600px;
                     margin: 0 auto;
                     background: white;
@@ -49,57 +53,72 @@ def root_welcome():
                     border-radius: 12px;
                     box-shadow: 0 4px 15px rgba(0,0,0,0.05);
                     border-top: 6px solid #4A7C2F;
-                }
-                h1 {
+                }}
+                h1 {{
                     color: #4A7C2F;
                     margin-bottom: 5px;
-                }
-                h2 {
+                }}
+                h2 {{
                     color: #C8860A;
                     font-size: 1.1rem;
                     margin-top: 0;
-                }
-                .status-badge {
+                }}
+                .status-badge {{
                     display: inline-block;
                     background-color: #E8F5E9;
                     color: #4A7C2F;
                     padding: 8px 16px;
                     border-radius: 20px;
                     font-weight: bold;
-                    margin: 15px 0;
-                }
-                .endpoints {
+                    margin: 10px 0;
+                }}
+                .gemini-badge {{
+                    display: inline-block;
+                    background-color: {gemini_status_bg};
+                    color: {gemini_status_color};
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-weight: bold;
+                    margin: 10px 0;
+                    font-size: 0.9rem;
+                }}
+                .endpoints {{
                     text-align: left;
                     background-color: #F5F7F2;
                     padding: 15px;
                     border-radius: 8px;
                     margin-top: 20px;
-                }
-                ul {
+                }}
+                ul {{
                     list-style-type: none;
                     padding: 0;
-                }
-                li {
+                }}
+                li {{
                     padding: 6px 0;
                     border-bottom: 1px solid #E0E0E0;
                     font-size: 0.9rem;
-                }
-                li:last-child {
+                }}
+                li:last-child {{
                     border-bottom: none;
-                }
-                code {
+                }}
+                code {{
                     background-color: #EAEAEA;
                     padding: 2px 6px;
                     border-radius: 4px;
                     font-family: monospace;
-                }
+                }}
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>🌾 GeoKisan / GeoFarmer AI Core</h1>
                 <h2>Precision Agriculture Precision Telemetry Suite</h2>
-                <div class="status-badge">● API ENGINE ONLINE</div>
+                <div>
+                    <div class="status-badge">● API ENGINE ONLINE</div>
+                </div>
+                <div>
+                    <div class="gemini-badge">{gemini_status_text}</div>
+                </div>
                 <p>Welcome back! The FastAPI server is successfully initialized and connected to the paid DeepSeek AI engine.</p>
                 <div class="endpoints">
                     <strong>📡 Active API Endpoints:</strong>
@@ -112,7 +131,6 @@ def root_welcome():
                         <li><code>POST /api/ai/negotiation</code> - Bargaining coach evaluator</li>
                     </ul>
                 </div>
-                <p style="font-size: 0.8rem; color: #666; margin-top: 25px;">GeoKisan / GeoFarmer V1.1.0 • Shujabad precision grids</p>
             </div>
         </body>
     </html>
