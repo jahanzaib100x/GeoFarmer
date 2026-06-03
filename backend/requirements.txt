@@ -3,3 +3,6 @@ uvicorn
 streamlit
 requests
 python-multipart
+numpy
+pillow
+onnxruntime
