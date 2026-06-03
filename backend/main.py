@@ -488,6 +488,10 @@ async def detect_disease(
     # Determine the Gemini API key to use (prioritize client header)
     api_key_to_use = x_gemini_api_key or GEMINI_API_KEY
     
+    key_src = "header" if x_gemini_api_key else "env"
+    key_preview = f"{api_key_to_use[:6]}...{api_key_to_use[-4:]}" if api_key_to_use and len(api_key_to_use) > 10 else "None/Invalid"
+    print(f"[Detect] Key selected: {key_preview} (Source: {key_src})")
+    
     # Execute actual ML classification
     # 1. Try Gemini Multimodal Vision if API key is provided (Production Grade)
     # 2. Fall back to local YOLOv8 ONNX model
