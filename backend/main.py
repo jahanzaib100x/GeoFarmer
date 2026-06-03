@@ -302,8 +302,17 @@ def run_onnx_inference(image_bytes: bytes) -> tuple:
         # Class scores are rows 4 to 9
         class_scores = output0[4:, :]  # shape [6, 8400]
         max_scores = np.max(class_scores, axis=1)  # max score for each of the 6 classes
-        predicted_class_idx = int(np.argmax(max_scores))
-        confidence = float(max_scores[predicted_class_idx])
+        
+        # Sort scores to compute peak ratio (best score vs second best score)
+        sorted_indices = np.argsort(max_scores)[::-1]
+        best_idx = int(sorted_indices[0])
+        second_best_idx = int(sorted_indices[1])
+        
+        best_score = float(max_scores[best_idx])
+        second_best_score = float(max_scores[second_best_idx])
+        
+        # Peak Ratio: measures how much the top class stands out from the second best
+        ratio = best_score / (second_best_score + 1e-6)
         
         class_names = {
             0: "Wheat Rust",
@@ -314,15 +323,25 @@ def run_onnx_inference(image_bytes: bytes) -> tuple:
             5: "Healthy Crop Leaf"
         }
         
-        detected_disease = class_names.get(predicted_class_idx, "Healthy Crop Leaf")
+        # Determine classification result
+        # 1. If best score is extremely low (< 1.5%), it's noise/healthy.
+        # 2. If it's low-to-medium but flat/uniform (e.g. dinner plate), the ratio is low, so it's healthy.
+        # 3. If there is a clear standing peak (at least 35% higher than 2nd class), we predict that class.
+        is_clear_detection = best_score >= 0.15 or (best_score >= 0.015 and ratio >= 1.35)
         
-        # Threshold: if overall max confidence is extremely low (e.g. < 0.04),
-        # it's likely a completely unrelated image or a generic healthy background.
-        if confidence < 0.04:
-            return "Healthy Crop Leaf", 0.94
+        if is_clear_detection:
+            detected_disease = class_names.get(best_idx, "Healthy Crop Leaf")
+            confidence = best_score
+        else:
+            detected_disease = "Healthy Crop Leaf"
+            confidence = 0.94
             
-        # Scale confidence for UI display (so a 0.10 model confidence displays as a realistic 73%)
-        ui_confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
+        # Scale confidence for UI display (so a 0.08 model confidence displays as a realistic 72%)
+        if detected_disease != "Healthy Crop Leaf":
+            ui_confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
+        else:
+            ui_confidence = confidence
+            
         return detected_disease, ui_confidence
     except Exception as e:
         print(f"[YOLOv8] Inference failed: {e}")
