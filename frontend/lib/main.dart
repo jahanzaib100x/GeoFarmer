@@ -10,7 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 
 // Global dynamic backend configuration with actual machine local IP defaults
-String globalBackendUrl = "http://10.4.30.150:8000";
+String globalBackendUrl = "https://geofarmer-backend.onrender.com";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
