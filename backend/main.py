@@ -157,6 +157,7 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-9665bba745484060b16bc5
 # Try to initialize Gemini Generative AI for multimodal vision diagnostics
 gemini_ready = False
 gemini_model = None
+gemini_last_error = "None"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     try:
@@ -167,6 +168,7 @@ if GEMINI_API_KEY:
         print("[Gemini] Multimodal Vision engine initialized successfully!")
     except Exception as ge:
         print(f"[Gemini] Failed to initialize Gemini API: {ge}")
+        gemini_last_error = f"Initialization error: {ge}"
 
 def call_deepseek_api(system_prompt: str, user_prompt: str) -> str:
     """
@@ -232,6 +234,14 @@ def post_telemetry(
     return {
         "status": "success",
         "message": "Telemetry received and updated successfully"
+    }
+
+@app.get("/api/debug/gemini")
+def debug_gemini():
+    return {
+        "gemini_ready": gemini_ready,
+        "gemini_last_error": gemini_last_error,
+        "disease_history": disease_history[-10:] if disease_history else []
     }
 
 @app.get("/api/latest", response_model=TelemetryResponse)
@@ -485,7 +495,11 @@ async def detect_disease(
             disease_history.append(gemini_diagnostic)
             return gemini_diagnostic
         except Exception as gemini_err:
+            global gemini_last_error
+            import traceback
+            gemini_last_error = f"{type(gemini_err).__name__}: {str(gemini_err)}\n{traceback.format_exc()}"
             print(f"[Gemini] Vision diagnostic failed: {gemini_err}")
+            traceback.print_exc()
             
     # Execute actual ML classification using ONNX model weights and crop filtering
     detected_disease, model_conf = run_onnx_inference(image_bytes, crop_name)
