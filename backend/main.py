@@ -238,9 +238,17 @@ def post_telemetry(
 
 @app.get("/api/debug/gemini")
 def debug_gemini():
+    available_models = []
+    if gemini_ready:
+        try:
+            import google.generativeai as genai
+            available_models = [m.name for m in genai.list_models()]
+        except Exception as le:
+            available_models = [f"Failed to list: {le}"]
     return {
         "gemini_ready": gemini_ready,
         "gemini_last_error": gemini_last_error,
+        "available_models": available_models,
         "disease_history": disease_history[-10:] if disease_history else []
     }
 
