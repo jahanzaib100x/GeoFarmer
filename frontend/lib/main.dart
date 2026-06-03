@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 
 // Global dynamic backend configuration with actual machine local IP defaults
 String globalBackendUrl = "https://geofarmer-backend.onrender.com";
+String globalGeminiApiKey = "";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -141,6 +142,7 @@ Widget buildPremiumNetworkImage(String url, {double? height, double? width, BoxF
 // Sleek Dynamic Server Settings Dialog with Connectivity latencies
 void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback onSaved) {
   final controller = TextEditingController(text: globalBackendUrl);
+  final geminiController = TextEditingController(text: globalGeminiApiKey);
   bool isTesting = false;
   String pingResult = '';
   Color pingColor = Colors.grey;
@@ -183,6 +185,23 @@ void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback o
                   contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
                 keyboardType: TextInputType.url,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isUrdu
+                    ? "گوگل جیمنی اے پی آئی کی درج کریں (اختیاری):"
+                    : "Enter custom Gemini API Key (optional):",
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: geminiController,
+                decoration: const InputDecoration(
+                  labelText: "Gemini API Key (AIzaSy...)",
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                obscureText: true,
               ),
               const SizedBox(height: 12),
               if (pingResult.isNotEmpty) ...[
@@ -293,6 +312,7 @@ void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback o
           ElevatedButton(
             onPressed: () {
               globalBackendUrl = controller.text.trim();
+              globalGeminiApiKey = geminiController.text.trim();
               Navigator.pop(context);
               onSaved();
             },
@@ -1330,6 +1350,9 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           filename: file.name,
         ));
         request.fields['crop_name'] = _yieldCrop.split(' ')[0];
+        if (globalGeminiApiKey.isNotEmpty) {
+          request.headers['x-gemini-api-key'] = globalGeminiApiKey;
+        }
 
         var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
@@ -1706,6 +1729,9 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             request.fields[key] = value.toString();
           }
         });
+        if (globalGeminiApiKey.isNotEmpty) {
+          request.headers['x-gemini-api-key'] = globalGeminiApiKey;
+        }
         var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
         if (response.statusCode == 200) {
