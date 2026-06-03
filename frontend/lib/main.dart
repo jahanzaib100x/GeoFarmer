@@ -233,7 +233,7 @@ void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback o
                             try {
                               final response = await http
                                   .get(Uri.parse(controller.text.trim()))
-                                  .timeout(const Duration(seconds: 3));
+                              .timeout(const Duration(seconds: 10));
                               if (response.statusCode == 200) {
                                 setState(() {
                                   pingResult = isUrdu
@@ -1330,7 +1330,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           filename: file.name,
         ));
 
-        var streamedResponse = await request.send();
+        var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
 
         if (response.statusCode == 200) {
@@ -1679,7 +1679,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   // Quick helper to make async HTTP GET requests safely inside Flutter web context
   Future<String?> _makeHttpGet(String urlStr) async {
     try {
-      final response = await http.get(Uri.parse(urlStr)).timeout(const Duration(seconds: 4));
+      final response = await http.get(Uri.parse(urlStr)).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return response.body;
       }
@@ -1700,7 +1700,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           [1, 2, 3, 4],
           filename: body['image'] ?? 'crop_leaf.jpg',
         ));
-        var streamedResponse = await request.send();
+        var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
         if (response.statusCode == 200) {
           return response.body;
@@ -1711,7 +1711,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           Uri.parse(urlStr),
           headers: {'Content-Type': 'application/json'},
           body: json.encode(body),
-        ).timeout(const Duration(seconds: 6));
+        ).timeout(const Duration(seconds: 30));
         if (response.statusCode == 200) {
           return response.body;
         }
