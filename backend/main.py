@@ -5,7 +5,7 @@ import threading
 import json
 import random
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Form, UploadFile, File, HTTPException
+from fastapi import FastAPI, Form, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -428,10 +428,43 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
         print(f"[YOLOv8] Inference failed: {e}")
         return "Unknown", 0.0
 
+def is_leaf_image(image_bytes: bytes) -> bool:
+    """
+    Offline green/brown color chromaticity heuristics to verify if the uploaded image 
+    is actually a plant leaf or something else (like shoes, keyboard, room background).
+    """
+    import io
+    from PIL import Image
+    import numpy as np
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        img = img.resize((100, 100))
+        img_data = np.array(img)
+        
+        r = img_data[:, :, 0].astype(np.int32)
+        g = img_data[:, :, 1].astype(np.int32)
+        b = img_data[:, :, 2].astype(np.int32)
+        
+        # A pixel is greenish if G is higher than both R and B
+        green_pixels = np.sum((g > r + 5) & (g > b + 5))
+        
+        # A pixel is yellowish/brownish if R and G are high relative to B
+        yellow_brown_pixels = np.sum((r > b + 15) & (g > b + 15) & (np.abs(r - g) < 50))
+        
+        plant_pixels = green_pixels + yellow_brown_pixels
+        ratio = plant_pixels / 10000.0
+        
+        print(f"[Heuristics] Plant-like visual ratio: {ratio:.3f} (Green: {green_pixels}, Yellow/Brown: {yellow_brown_pixels})")
+        return ratio >= 0.12
+    except Exception as e:
+        print(f"[Heuristics] Image color validation failed: {e}")
+        return True  # Safe fallback if PIL/NumPy fails
+
 @app.post("/detect")
 async def detect_disease(
     image: UploadFile = File(...),
-    crop_name: Optional[str] = Form(None)
+    crop_name: Optional[str] = Form(None),
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Ingests a crop leaf image via multipart/form-data.
@@ -452,11 +485,14 @@ async def detect_disease(
     except Exception as e_save:
         print(f"Failed to cache uploaded diagnostic image: {e_save}")
         
+    # Determine the Gemini API key to use (prioritize client header)
+    api_key_to_use = x_gemini_api_key or GEMINI_API_KEY
+    
     # Execute actual ML classification
     # 1. Try Gemini Multimodal Vision if API key is provided (Production Grade)
     # 2. Fall back to local YOLOv8 ONNX model
     gemini_diagnostic = None
-    if gemini_ready:
+    if api_key_to_use:
         try:
             import google.generativeai as genai
             from PIL import Image
@@ -490,8 +526,10 @@ async def detect_disease(
             }}
             """
             
-            print(f"[Gemini] Dispatching visual scan for crop context '{crop_name}'...")
-            response = gemini_model.generate_content([prompt, pil_img])
+            print(f"[Gemini] Dispatching visual scan for crop context '{crop_name}' using model 'gemini-2.5-flash'...")
+            genai.configure(api_key=api_key_to_use)
+            local_gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+            response = local_gemini_model.generate_content([prompt, pil_img])
             
             resp_text = response.text.strip()
             if resp_text.startswith("```json"):
@@ -513,6 +551,22 @@ async def detect_disease(
             print(f"[Gemini] Vision diagnostic failed: {gemini_err}")
             traceback.print_exc()
             
+    # Run offline plant color verification to reject non-leaf pictures (like shoes or keyboards)
+    if not is_leaf_image(image_bytes):
+        print(f"[Fallback heuristics] Input rejected as non-leaf image (filename: {filename})")
+        fallback_invalid = {
+            "status": "invalid",
+            "highest_confidence_class": "Invalid Image",
+            "severity_level": "None",
+            "confidence": 1.0,
+            "urdu_name": "ناموزوں تصویر",
+            "description": "Please upload a clear, close-up picture of a crop leaf. The system did not detect any plant-like visual structures in the image.",
+            "remediation_en": "Please upload a clear picture of a crop leaf.",
+            "remediation_ur": "براہ مہربانی فصل کے پتے کی واضح تصویر اپ لوڈ کریں۔"
+        }
+        disease_history.append(fallback_invalid)
+        return fallback_invalid
+
     # Execute actual ML classification using ONNX model weights and crop filtering
     detected_disease, model_conf = run_onnx_inference(image_bytes, crop_name)
     
