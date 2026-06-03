@@ -1329,6 +1329,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           bytes,
           filename: file.name,
         ));
+        request.fields['crop_name'] = _yieldCrop.split(' ')[0];
 
         var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
@@ -1700,6 +1701,11 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           [1, 2, 3, 4],
           filename: body['image'] ?? 'crop_leaf.jpg',
         ));
+        body.forEach((key, value) {
+          if (key != 'image') {
+            request.fields[key] = value.toString();
+          }
+        });
         var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
         if (response.statusCode == 200) {
@@ -4714,10 +4720,9 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
 
     if (!widget.isOffline) {
       try {
-        // Simulate multipart/form-data upload payload by passing filename marker
         final response = await _makeHttpPost(
           "${globalBackendUrl}/detect",
-          {"image": simulatedFilename} // API processes filename directly to generate DeepSeek pathology cards
+          {"image": simulatedFilename, "crop_name": _yieldCrop.split(' ')[0]} // API processes filename directly to generate DeepSeek pathology cards
         );
         if (response != null) {
           final data = json.decode(response);

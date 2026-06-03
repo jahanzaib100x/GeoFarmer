@@ -275,7 +275,7 @@ def get_onnx_session():
             print(f"[YOLOv8] Model file not found at {model_path}")
     return onnx_session
 
-def run_onnx_inference(image_bytes: bytes) -> tuple:
+def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> tuple:
     import io
     from PIL import Image
     import numpy as np
@@ -303,17 +303,6 @@ def run_onnx_inference(image_bytes: bytes) -> tuple:
         class_scores = output0[4:, :]  # shape [6, 8400]
         max_scores = np.max(class_scores, axis=1)  # max score for each of the 6 classes
         
-        # Sort scores to compute peak ratio (best score vs second best score)
-        sorted_indices = np.argsort(max_scores)[::-1]
-        best_idx = int(sorted_indices[0])
-        second_best_idx = int(sorted_indices[1])
-        
-        best_score = float(max_scores[best_idx])
-        second_best_score = float(max_scores[second_best_idx])
-        
-        # Peak Ratio: measures how much the top class stands out from the second best
-        ratio = best_score / (second_best_score + 1e-6)
-        
         class_names = {
             0: "Wheat Rust",
             1: "Rice Blast",
@@ -323,12 +312,50 @@ def run_onnx_inference(image_bytes: bytes) -> tuple:
             5: "Healthy Crop Leaf"
         }
         
+        # Crop context class filtering
+        valid_indices = [0, 1, 2, 3, 4, 5]
+        if crop_name:
+            crop_key = crop_name.lower()
+            # Map crop types to specific valid model class indices (e.g. wheat -> Wheat Rust or Healthy Leaf only)
+            crop_class_mapping = {
+                "wheat": [0, 5],
+                "rice": [1, 5],
+                "potato": [2, 5],
+                "cotton": [3, 5],
+                "tomato": [4, 5],
+            }
+            if crop_key in crop_class_mapping:
+                valid_indices = crop_class_mapping[crop_key]
+                print(f"[YOLOv8] Contextual Filtering enabled for crop '{crop_name}'. Valid classes: {valid_indices}")
+                
+        # Get scores only for valid indices
+        filtered_scores = {idx: float(max_scores[idx]) for idx in valid_indices}
+        
+        # Sort filtered scores to find the best and second best match
+        sorted_indices = sorted(filtered_scores.keys(), key=lambda k: filtered_scores[k], reverse=True)
+        best_idx = int(sorted_indices[0])
+        
+        best_score = filtered_scores[best_idx]
+        
+        if len(sorted_indices) > 1:
+            second_best_idx = int(sorted_indices[1])
+            second_best_score = filtered_scores[second_best_idx]
+        else:
+            second_best_score = 0.0
+            
+        # Peak Ratio: measures how much the top class stands out from the second best
+        ratio = best_score / (second_best_score + 1e-6)
+        
         # Determine classification result
         # 1. If best score is extremely low (< 1.5%), it's noise/healthy.
         # 2. If it's low-to-medium but flat/uniform (e.g. dinner plate), the ratio is low, so it's healthy.
         # 3. If there is a clear standing peak (at least 35% higher than 2nd class), we predict that class.
         is_clear_detection = best_score >= 0.15 or (best_score >= 0.015 and ratio >= 1.35)
         
+        # If the detected class is 5 (Healthy Crop Leaf), override clear detection to healthy
+        if best_idx == 5:
+            is_clear_detection = False
+            
         if is_clear_detection:
             detected_disease = class_names.get(best_idx, "Healthy Crop Leaf")
             confidence = best_score
@@ -348,10 +375,13 @@ def run_onnx_inference(image_bytes: bytes) -> tuple:
         return "Unknown", 0.0
 
 @app.post("/detect")
-async def detect_disease(image: UploadFile = File(...)):
+async def detect_disease(
+    image: UploadFile = File(...),
+    crop_name: Optional[str] = Form(None)
+):
     """
     Ingests a crop leaf image via multipart/form-data.
-    Executes a real-time pixel analysis on the custom YOLOv8 ONNX model,
+    Executes a real-time pixel analysis on the custom YOLOv8 ONNX model with crop name filtering,
     then constructs a rich, bilingual diagnostic report using DeepSeek.
     """
     filename = image.filename
@@ -368,8 +398,8 @@ async def detect_disease(image: UploadFile = File(...)):
     except Exception as e_save:
         print(f"Failed to cache uploaded diagnostic image: {e_save}")
         
-    # Execute actual ML classification using ONNX model weights
-    detected_disease, model_conf = run_onnx_inference(image_bytes)
+    # Execute actual ML classification using ONNX model weights and crop filtering
+    detected_disease, model_conf = run_onnx_inference(image_bytes, crop_name)
     
     # Determine confidence level and disease name
     if detected_disease != "Unknown":
