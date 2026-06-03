@@ -133,8 +133,8 @@ disease_history: List[Dict[str, Any]] = []
 # Mock or local implementation for Firebase database connection fallback
 firebase_initialized = False
 
-# Hardcoded paid DeepSeek API key
-DEEPSEEK_API_KEY = "sk-9665bba745484060b16bc579df18484d"
+# Paid DeepSeek API key loaded from environment variables (fallback for local dev)
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-9665bba745484060b16bc579df18484d")
 
 def call_deepseek_api(system_prompt: str, user_prompt: str) -> str:
     """
