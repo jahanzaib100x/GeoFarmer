@@ -239,6 +239,9 @@ def post_telemetry(
 @app.get("/api/debug/gemini")
 def debug_gemini():
     available_models = []
+    key_preview = "None"
+    if GEMINI_API_KEY:
+        key_preview = f"{GEMINI_API_KEY[:6]}...{GEMINI_API_KEY[-4:]}" if len(GEMINI_API_KEY) > 10 else "Invalid length"
     if gemini_ready:
         try:
             import google.generativeai as genai
@@ -248,6 +251,7 @@ def debug_gemini():
     return {
         "gemini_ready": gemini_ready,
         "gemini_last_error": gemini_last_error,
+        "gemini_key_preview": key_preview,
         "available_models": available_models,
         "disease_history": disease_history[-10:] if disease_history else []
     }
