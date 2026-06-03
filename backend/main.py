@@ -163,7 +163,7 @@ if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        gemini_model = genai.GenerativeModel('gemini-2.5-flash')
         gemini_ready = True
         print("[Gemini] Multimodal Vision engine initialized successfully!")
     except Exception as ge:
