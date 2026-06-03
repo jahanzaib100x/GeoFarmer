@@ -1,0 +1,10 @@
+path: F:\.Hackathon\0.GeoFarmer\backend\datasets\crop_leaf
+train: images/train
+val: images/val
+names:
+  0: Wheat Rust
+  1: Rice Blast
+  2: Potato Late Blight
+  3: Cotton Leaf Curl Virus
+  4: Tomato Early Blight
+  5: Healthy Crop Leaf
