@@ -136,6 +136,20 @@ firebase_initialized = False
 # Paid DeepSeek API key loaded from environment variables (fallback for local dev)
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-9665bba745484060b16bc579df18484d")
 
+# Try to initialize Gemini Generative AI for multimodal vision diagnostics
+gemini_ready = False
+gemini_model = None
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        gemini_ready = True
+        print("[Gemini] Multimodal Vision engine initialized successfully!")
+    except Exception as ge:
+        print(f"[Gemini] Failed to initialize Gemini API: {ge}")
+
 def call_deepseek_api(system_prompt: str, user_prompt: str) -> str:
     """
     Synchronous helper to execute prompt requests against the paid DeepSeek chat completion API.
@@ -398,6 +412,63 @@ async def detect_disease(
     except Exception as e_save:
         print(f"Failed to cache uploaded diagnostic image: {e_save}")
         
+    # Execute actual ML classification
+    # 1. Try Gemini Multimodal Vision if API key is provided (Production Grade)
+    # 2. Fall back to local YOLOv8 ONNX model
+    gemini_diagnostic = None
+    if gemini_ready:
+        try:
+            import google.generativeai as genai
+            from PIL import Image
+            import io
+            
+            # Load image for VLM input
+            pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            
+            prompt_context = f"Crop Type: {crop_name if crop_name else 'Unknown crop'}. File Name: {filename}."
+            
+            prompt = f"""
+            You are an expert precision agricultural visual pathologist and computer vision model.
+            Analyze this uploaded image in the context of the farm's active crop:
+            {prompt_context}
+            
+            Your task:
+            1. Determine if this image is a valid close-up of a crop leaf/plant. If the image is NOT a crop leaf (e.g. it is a dinner plate, food, a face, keyboard, animal, or random room background), you MUST return a JSON indicating that this is an invalid image.
+            2. If it is a leaf, classify if it has any disease (Wheat Rust, Rice Blast, Potato Late Blight, Cotton Leaf Curl Virus, Tomato Early Blight) or if it is healthy.
+            
+            You must return a raw JSON response. Do not include markdown wraps, code blocks, or triple backticks.
+            Return raw JSON only, matching this structure:
+            {{
+              "status": "success" or "invalid",
+              "highest_confidence_class": "Name of the disease (e.g. Wheat Rust) or 'Healthy Crop Leaf' or 'Invalid Image'",
+              "severity_level": "Mild, Moderate, Severe, or None",
+              "confidence": 0.95,
+              "urdu_name": "Urdu translation (e.g. پیلا کُنگ) or 'ناموزوں تصویر'",
+              "description": "Short explanation of the diagnosis based on the image visual details.",
+              "remediation_en": "Organic remedy and chemical spray recommendation (or 'Please upload a clear picture of a crop leaf' if invalid).",
+              "remediation_ur": "علاج (اردو میں)"
+            }}
+            """
+            
+            print(f"[Gemini] Dispatching visual scan for crop context '{crop_name}'...")
+            response = gemini_model.generate_content([prompt, pil_img])
+            
+            resp_text = response.text.strip()
+            if resp_text.startswith("```json"):
+                resp_text = resp_text[7:]
+            if resp_text.endswith("```"):
+                resp_text = resp_text[:-3]
+            resp_text = resp_text.strip()
+            
+            gemini_diagnostic = json.loads(resp_text)
+            print(f"[Gemini] Diagnostic output: {gemini_diagnostic.get('highest_confidence_class')}")
+            
+            # Save to history and return immediately
+            disease_history.append(gemini_diagnostic)
+            return gemini_diagnostic
+        except Exception as gemini_err:
+            print(f"[Gemini] Vision diagnostic failed: {gemini_err}")
+            
     # Execute actual ML classification using ONNX model weights and crop filtering
     detected_disease, model_conf = run_onnx_inference(image_bytes, crop_name)
     
