@@ -1249,6 +1249,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   String _diagSeverity = "";
   String _diagRemedyEn = "";
   String _diagRemedyUr = "";
+  String _doctorCrop = "Wheat (Sona-21)";
 
   // Dynamic Add Crop Controllers
   final _cropNameController = TextEditingController();
@@ -1349,7 +1350,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           bytes,
           filename: file.name,
         ));
-        request.fields['crop_name'] = _yieldCrop.split(' ')[0];
+        request.fields['crop_name'] = _doctorCrop.split(' ')[0];
         if (globalGeminiApiKey.isNotEmpty) {
           request.headers['x-gemini-api-key'] = globalGeminiApiKey;
         }
@@ -2237,6 +2238,35 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               ),
             ),
             const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _doctorCrop,
+              decoration: InputDecoration(
+                labelText: widget.isUrdu ? "تشخیص کے لیے فصل منتخب کریں" : "Select Crop for Diagnosis",
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.grass, color: GeoKisanTheme.primaryGreen),
+              ),
+              items: [
+                "Wheat (Sona-21)",
+                "Cotton (BT-902)",
+                "Rice (Basmati)",
+                "Potato (Red-S)",
+                "Tomato (Sahil)",
+                "Apple (Red-D)",
+                "Corn (Maize)",
+                "Grape (King-R)",
+                "Peach (Swat-P)",
+                "Pepper (Bell)",
+                "Strawberry (Sweet)"
+              ].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _doctorCrop = val;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 20),
 
             // Premium Grid Triggers for Camera & Gallery Selector
             Row(
@@ -4748,7 +4778,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       try {
         final response = await _makeHttpPost(
           "${globalBackendUrl}/detect",
-          {"image": simulatedFilename, "crop_name": _yieldCrop.split(' ')[0]} // API processes filename directly to generate DeepSeek pathology cards
+          {"image": simulatedFilename, "crop_name": _doctorCrop.split(' ')[0]} // API processes filename directly to generate DeepSeek pathology cards
         );
         if (response != null) {
           final data = json.decode(response);

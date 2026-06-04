@@ -350,7 +350,7 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
     from PIL import Image
     import numpy as np
     
-    # 1. Load both model sessions
+    # 1. Load model sessions
     session_mobilenet = get_mobilenet_session()
     session_yolo = get_yolo_session()
     
@@ -360,30 +360,19 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         
-        # --- Preprocess and Run MobileNetV2 (general pre-trained classifier) ---
-        logits_mn = [0.0] * 38
-        probs_mn = np.zeros(38, dtype=np.float32)
-        mobilenet_classes = [
-            "Apple___Apple_scab", "Apple___Black_rot", "Apple___Cedar_apple_rust", "Apple___healthy",
-            "Blueberry___healthy",
-            "Cherry_(including_sour)___Powdery_mildew", "Cherry_(including_sour)___healthy",
-            "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot", "Corn_(maize)___Common_rust_",
-            "Corn_(maize)___Northern_Leaf_Blight", "Corn_(maize)___healthy",
-            "Grape___Black_rot", "Grape___Esca_(Black_Measles)", "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)", "Grape___healthy",
-            "Orange___Haunglongbing_(Citrus_greening)",
-            "Peach___Bacterial_spot", "Peach___healthy",
-            "Pepper,_bell___Bacterial_spot", "Pepper,_bell___healthy",
-            "Potato___Early_blight", "Potato___Late_blight", "Potato___healthy",
-            "Raspberry___healthy",
-            "Soybean___healthy",
-            "Squash___Powdery_mildew",
-            "Strawberry___Leaf_scorch", "Strawberry___healthy",
-            "Tomato___Bacterial_spot", "Tomato___Early_blight", "Tomato___Late_blight", "Tomato___Leaf_Mold",
-            "Tomato___Septoria_leaf_spot", "Tomato___Spider_mites Two-spotted_spider_mite", "Tomato___Target_Spot",
-            "Tomato___Tomato_Yellow_Leaf_Curl_Virus", "Tomato___Tomato_mosaic_virus", "Tomato___healthy"
-        ]
+        # 2. Strict Crop Routing
+        crop_key = crop_name.lower() if crop_name else "wheat"
         
-        if session_mobilenet is not None:
+        # Map crop keys to models
+        use_mobilenet = True
+        if any(yk in crop_key for yk in ["wheat", "cotton", "rice"]):
+            use_mobilenet = False
+            
+        if use_mobilenet:
+            session = session_mobilenet
+            if session is None:
+                return "Unknown", 0.0
+                
             img_mn = img.resize((224, 224))
             img_data_mn = np.array(img_mn).astype(np.float32) / 255.0
             mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -392,107 +381,49 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
             img_data_mn = np.transpose(img_data_mn, (2, 0, 1))
             img_data_mn = np.expand_dims(img_data_mn, axis=0)
             
-            inputs_mn = {session_mobilenet.get_inputs()[0].name: img_data_mn}
-            outputs_mn = session_mobilenet.run(None, inputs_mn)
-            logits_mn = outputs_mn[0][0]
+            inputs_mn = {session.get_inputs()[0].name: img_data_mn}
+            outputs_mn = session.run(None, inputs_mn)
+            logits = outputs_mn[0][0]  # shape [38]
             
             # Softmax
-            exp_logits = np.exp(logits_mn - np.max(logits_mn))
-            probs_mn = exp_logits / np.sum(exp_logits)
+            exp_logits = np.exp(logits - np.max(logits))
+            probs = exp_logits / np.sum(exp_logits)
             
-        raw_mn_idx = int(np.argmax(probs_mn))
-        raw_mn_prob = float(probs_mn[raw_mn_idx])
-        raw_mn_class = mobilenet_classes[raw_mn_idx]
-        
-        # --- Preprocess and Run Custom YOLOv8 ---
-        best_yolo_score = 0.0
-        best_yolo_idx = 5
-        yolo_ratio = 1.0
-        class_names_yolo = {
-            0: "Wheat Rust",
-            1: "Rice Blast",
-            2: "Potato Late Blight",
-            3: "Cotton Leaf Curl Virus",
-            4: "Tomato Early Blight",
-            5: "Healthy Crop Leaf"
-        }
-        
-        if session_yolo is not None:
-            img_yolo = img.resize((640, 640))
-            img_data_yolo = np.array(img_yolo).astype(np.float32) / 255.0
-            img_data_yolo = np.transpose(img_data_yolo, (2, 0, 1))
-            img_data_yolo = np.expand_dims(img_data_yolo, axis=0)
+            mobilenet_classes = [
+                "Apple___Apple_scab", "Apple___Black_rot", "Apple___Cedar_apple_rust", "Apple___healthy",
+                "Blueberry___healthy",
+                "Cherry_(including_sour)___Powdery_mildew", "Cherry_(including_sour)___healthy",
+                "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot", "Corn_(maize)___Common_rust_",
+                "Corn_(maize)___Northern_Leaf_Blight", "Corn_(maize)___healthy",
+                "Grape___Black_rot", "Grape___Esca_(Black_Measles)", "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)", "Grape___healthy",
+                "Orange___Haunglongbing_(Citrus_greening)",
+                "Peach___Bacterial_spot", "Peach___healthy",
+                "Pepper,_bell___Bacterial_spot", "Pepper,_bell___healthy",
+                "Potato___Early_blight", "Potato___Late_blight", "Potato___healthy",
+                "Raspberry___healthy",
+                "Soybean___healthy",
+                "Squash___Powdery_mildew",
+                "Strawberry___Leaf_scorch", "Strawberry___healthy",
+                "Tomato___Bacterial_spot", "Tomato___Early_blight", "Tomato___Late_blight", "Tomato___Leaf_Mold",
+                "Tomato___Septoria_leaf_spot", "Tomato___Spider_mites Two-spotted_spider_mite", "Tomato___Target_Spot",
+                "Tomato___Tomato_Yellow_Leaf_Curl_Virus", "Tomato___Tomato_mosaic_virus", "Tomato___healthy"
+            ]
             
-            inputs_yolo = {session_yolo.get_inputs()[0].name: img_data_yolo}
-            outputs_yolo = session_yolo.run(None, inputs_yolo)
-            output0 = outputs_yolo[0][0]
-            
-            class_scores = output0[4:, :]
-            max_scores = np.max(class_scores, axis=1)
-            
-            # Limit classes based on crop context
-            valid_yolo_indices = [0, 1, 3, 5]
-            if crop_name:
-                crop_key = crop_name.lower()
-                if "wheat" in crop_key:
-                    valid_yolo_indices = [0, 5]
-                elif "rice" in crop_key:
-                    valid_yolo_indices = [1, 5]
-                elif "cotton" in crop_key:
-                    valid_yolo_indices = [3, 5]
+            # Strict Crop Class Filtering
+            valid_indices = []
+            for idx, name in enumerate(mobilenet_classes):
+                class_crop = name.split("___")[0].lower()
+                if crop_key in class_crop or class_crop in crop_key:
+                    valid_indices.append(idx)
                     
-            filtered_yolo = {idx: float(max_scores[idx]) for idx in valid_yolo_indices}
-            sorted_yolo_idx = sorted(filtered_yolo.keys(), key=lambda k: filtered_yolo[k], reverse=True)
-            best_yolo_idx = int(sorted_yolo_idx[0])
-            best_yolo_score = filtered_yolo[best_yolo_idx]
-            
-            if len(sorted_yolo_idx) > 1:
-                second_best_yolo_score = filtered_yolo[int(sorted_yolo_idx[1])]
-            else:
-                second_best_yolo_score = 0.0
+            # If no matches (or crop unspecified), allow all 38 classes
+            if not valid_indices:
+                valid_indices = list(range(38))
                 
-            yolo_ratio = best_yolo_score / (second_best_yolo_score + 1e-6)
-            
-        # --- Model Routing Decision ---
-        # 1. Check if MobileNetV2 has a strong prediction for a disease class (e.g. raw prob >= 0.30)
-        is_strong_mobilenet_disease = (raw_mn_prob >= 0.30) and ("healthy" not in raw_mn_class.lower())
-        
-        # 2. Check if the user explicitly requested a crop that maps to MobileNetV2
-        crop_key = crop_name.lower() if crop_name else ""
-        is_requested_mobilenet_crop = any(k in crop_key for k in ["potato", "tomato", "apple", "blueberry", "cherry", "corn", "grape", "orange", "peach", "pepper", "raspberry", "soybean", "squash", "strawberry"])
-        
-        # Force MobileNetV2 if requested, or if MobileNetV2 has a strong disease detection (autodetected potato/tomato/etc.)
-        use_mobilenet = False
-        if is_requested_mobilenet_crop:
-            use_mobilenet = True
-        elif is_strong_mobilenet_disease:
-            # If the crop was selected as Wheat or Cotton, but YOLO has a strong match, stay with YOLO
-            if ("wheat" in crop_key or "cotton" in crop_key) and (best_yolo_score >= 0.15 and best_yolo_idx != 5):
-                use_mobilenet = False
-            else:
-                use_mobilenet = True
-        elif not ("wheat" in crop_key or "cotton" in crop_key or "rice" in crop_key):
-            use_mobilenet = True
-            
-        # --- Execute Chosen Model ---
-        if use_mobilenet:
-            print(f"[ONNX Routing] Selected: MobileNetV2. Raw best class: {raw_mn_class} (Prob: {raw_mn_prob:.3f})")
-            
-            # Contextual crop filtering for MobileNetV2
-            valid_mn_indices = list(range(38))
-            if is_requested_mobilenet_crop:
-                matching_indices = []
-                for idx, name in enumerate(mobilenet_classes):
-                    class_crop = name.split("___")[0].lower()
-                    if crop_key in class_crop or class_crop in crop_key:
-                        matching_indices.append(idx)
-                if matching_indices:
-                    valid_mn_indices = matching_indices
-                    
-            # Re-normalize filtered probabilities
-            filtered_probs = np.zeros_like(probs_mn)
-            for idx in valid_mn_indices:
-                filtered_probs[idx] = probs_mn[idx]
+            # Re-normalize over valid indices
+            filtered_probs = np.zeros_like(probs)
+            for idx in valid_indices:
+                filtered_probs[idx] = probs[idx]
             sum_probs = np.sum(filtered_probs)
             if sum_probs > 0:
                 filtered_probs = filtered_probs / sum_probs
@@ -500,9 +431,13 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
             best_idx = int(np.argmax(filtered_probs))
             confidence = float(filtered_probs[best_idx])
             
+            # Get raw best probability to check for garbage/noise
+            raw_best_idx = int(np.argmax(probs))
+            raw_best_prob = float(probs[raw_best_idx])
+            
             # Default to healthy if confidence is extremely low
-            if raw_mn_prob < 0.12 or confidence < 0.20:
-                print(f"[MobileNet] Low confidence (Raw: {raw_mn_prob:.3f}, Conf: {confidence:.3f}), defaulting to Healthy Crop Leaf")
+            if raw_best_prob < 0.12 or confidence < 0.20:
+                print(f"[MobileNet] Low confidence (Raw: {raw_best_prob:.3f}, Conf: {confidence:.3f}), defaulting to Healthy Crop Leaf")
                 return "Healthy Crop Leaf", 0.94
                 
             raw_class_name = mobilenet_classes[best_idx]
@@ -528,12 +463,56 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
                 
                 confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
                 
-            print(f"[MobileNet] Final Prediction: {detected_disease} (Confidence: {confidence:.3f})")
+            print(f"[MobileNet] Strict Prediction: {detected_disease} (Confidence: {confidence:.3f})")
             return detected_disease, confidence
             
         else:
-            print(f"[ONNX Routing] Selected: YOLOv8. Best class index: {best_yolo_idx} (Score: {best_yolo_score:.3f})")
-            # YOLOv8 execution
+            session = session_yolo
+            if session is None:
+                return "Unknown", 0.0
+                
+            img_yolo = img.resize((640, 640))
+            img_data_yolo = np.array(img_yolo).astype(np.float32) / 255.0
+            img_data_yolo = np.transpose(img_data_yolo, (2, 0, 1))
+            img_data_yolo = np.expand_dims(img_data_yolo, axis=0)
+            
+            inputs_yolo = {session.get_inputs()[0].name: img_data_yolo}
+            outputs_yolo = session.run(None, inputs_yolo)
+            output0 = outputs_yolo[0][0]
+            
+            class_scores = output0[4:, :]
+            max_scores = np.max(class_scores, axis=1)
+            
+            class_names_yolo = {
+                0: "Wheat Rust",
+                1: "Rice Blast",
+                2: "Potato Late Blight",
+                3: "Cotton Leaf Curl Virus",
+                4: "Tomato Early Blight",
+                5: "Healthy Crop Leaf"
+            }
+            
+            # Strict YOLO Crop Class Filtering
+            valid_yolo_indices = [0, 1, 3, 5]
+            if "wheat" in crop_key:
+                valid_yolo_indices = [0, 5]
+            elif "rice" in crop_key:
+                valid_yolo_indices = [1, 5]
+            elif "cotton" in crop_key:
+                valid_yolo_indices = [3, 5]
+                
+            filtered_yolo = {idx: float(max_scores[idx]) for idx in valid_yolo_indices}
+            sorted_yolo_idx = sorted(filtered_yolo.keys(), key=lambda k: filtered_yolo[k], reverse=True)
+            best_yolo_idx = int(sorted_yolo_idx[0])
+            best_yolo_score = filtered_yolo[best_yolo_idx]
+            
+            if len(sorted_yolo_idx) > 1:
+                second_best_yolo_score = filtered_yolo[int(sorted_yolo_idx[1])]
+            else:
+                second_best_yolo_score = 0.0
+                
+            yolo_ratio = best_yolo_score / (second_best_yolo_score + 1e-6)
+            
             is_clear_detection = best_yolo_score >= 0.15 or (best_yolo_score >= 0.02 and yolo_ratio >= 1.4)
             
             if best_yolo_idx == 5:
@@ -547,7 +526,7 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
                 detected_disease = "Healthy Crop Leaf"
                 confidence = 0.94
                 
-            print(f"[YOLOv8] Final Prediction: {detected_disease} (Confidence: {confidence:.3f})")
+            print(f"[YOLOv8] Strict Prediction: {detected_disease} (Confidence: {confidence:.3f})")
             return detected_disease, confidence
             
     except Exception as e:
