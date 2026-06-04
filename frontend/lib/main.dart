@@ -8,13 +8,21 @@ import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Global dynamic backend configuration with actual machine local IP defaults
 String globalBackendUrl = "https://geofarmer-backend.onrender.com";
 String globalGeminiApiKey = "";
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    globalBackendUrl = prefs.getString('backend_url') ?? "https://geofarmer-backend.onrender.com";
+    globalGeminiApiKey = prefs.getString('gemini_api_key') ?? "";
+  } catch (e) {
+    print("Failed to initialize SharedPreferences: $e");
+  }
   runApp(const GeoKisanApp());
 }
 
@@ -310,9 +318,16 @@ void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback o
             child: Text(isUrdu ? "منسوخ" : "Cancel"),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               globalBackendUrl = controller.text.trim();
               globalGeminiApiKey = geminiController.text.trim();
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('backend_url', globalBackendUrl);
+                await prefs.setString('gemini_api_key', globalGeminiApiKey);
+              } catch (e) {
+                print("Failed to save SharedPreferences: $e");
+              }
               Navigator.pop(context);
               onSaved();
             },
@@ -1451,6 +1466,30 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           _diagUrName = "اسٹرابیری کے پتے جھلسنا";
           _diagRemedyUr = "1۔ پودوں کے درمیان فاصلہ رکھیں۔ 2۔ حفاظتی فنگسائڈ کا سپرے کریں۔";
           _diagRemedyEn = "1. Keep plant beds spaced out. 2. Apply protective fungicide spray.";
+        } else if (crop.contains("mango")) {
+          _diagClass = "Mango Anthracnose";
+          _diagSeverity = "Moderate";
+          _diagUrName = "آم کا جھلساؤ";
+          _diagRemedyUr = "1۔ متاثرہ حصے جلائیں۔ 2۔ کاپر فنگسائڈ کا سپرے کریں۔";
+          _diagRemedyEn = "1. Burn infected parts. 2. Spray Copper Hydroxide fungicide.";
+        } else if (crop.contains("citrus") || crop.contains("orange")) {
+          _diagClass = "Citrus Canker";
+          _diagSeverity = "Moderate";
+          _diagUrName = "کینو کا کینکر (Citrus Canker)";
+          _diagRemedyUr = "1۔ متاثرہ پتے کاٹ دیں۔ 2۔ کاپر آکسی کلورائیڈ کا سپرے کریں۔";
+          _diagRemedyEn = "1. Prune infected leaves. 2. Spray Copper Oxychloride.";
+        } else if (crop.contains("sugarcane")) {
+          _diagClass = "Sugarcane Red Rot";
+          _diagSeverity = "Severe";
+          _diagUrName = "گنے کی سرخ سڑن";
+          _diagRemedyUr = "1۔ بیمار فصل تلف کریں۔ 2۔ زمین کی نکاسی بہتر بنائیں۔";
+          _diagRemedyEn = "1. Destroy diseased plants. 2. Improve field drainage.";
+        } else if (crop.contains("onion")) {
+          _diagClass = "Onion Purple Blotch";
+          _diagSeverity = "Moderate";
+          _diagUrName = "پیاز کا ارغوانی دھبہ";
+          _diagRemedyUr = "1۔ مناسب فاصلہ رکھیں۔ 2۔ مینکوزیب کا سپرے کریں۔";
+          _diagRemedyEn = "1. Maintain spacing. 2. Spray Mancozeb fungicide.";
         } else {
           _diagClass = "Wheat Rust (پیلا کُنگ)";
           _diagSeverity = "Moderate";
@@ -2331,7 +2370,11 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                 "Grape (King-R)",
                 "Peach (Swat-P)",
                 "Pepper (Bell)",
-                "Strawberry (Sweet)"
+                "Strawberry (Sweet)",
+                "Mango (Chaunsa)",
+                "Citrus / Orange (Kino)",
+                "Sugarcane (Sartaj)",
+                "Onion (Red-P)"
               ].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
               onChanged: (val) {
                 if (val != null) {
