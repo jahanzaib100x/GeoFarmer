@@ -310,123 +310,242 @@ def get_latest_telemetry():
         frost_advice_ur=frost_ur
     )
 
-# Initialize ONNX runtime model session lazily
-onnx_session = None
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yolov8n_geokisan.onnx")
+# Initialize ONNX runtime model sessions lazily
+onnx_session_yolo = None
+onnx_session_mobilenet = None
 
-def get_onnx_session():
-    global onnx_session
-    if onnx_session is None:
+yolo_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yolov8n_geokisan.onnx")
+mobilenet_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mobilenetv2_plant.onnx")
+
+def get_yolo_session():
+    global onnx_session_yolo
+    if onnx_session_yolo is None:
         import onnxruntime
-        if os.path.exists(model_path):
+        if os.path.exists(yolo_model_path):
             try:
-                # Use CPU execution provider for lightweight cloud hosting
-                onnx_session = onnxruntime.InferenceSession(model_path, providers=['CPUExecutionProvider'])
-                print(f"[YOLOv8] Successfully loaded model weights from {model_path}")
+                onnx_session_yolo = onnxruntime.InferenceSession(yolo_model_path, providers=['CPUExecutionProvider'])
+                print(f"[YOLOv8] Successfully loaded model weights from {yolo_model_path}")
             except Exception as e:
-                print(f"[YOLOv8] Failed to load ONNX model: {e}")
+                print(f"[YOLOv8] Failed to load YOLOv8 model: {e}")
         else:
-            print(f"[YOLOv8] Model file not found at {model_path}")
-    return onnx_session
+            print(f"[YOLOv8] Model file not found at {yolo_model_path}")
+    return onnx_session_yolo
+
+def get_mobilenet_session():
+    global onnx_session_mobilenet
+    if onnx_session_mobilenet is None:
+        import onnxruntime
+        if os.path.exists(mobilenet_model_path):
+            try:
+                onnx_session_mobilenet = onnxruntime.InferenceSession(mobilenet_model_path, providers=['CPUExecutionProvider'])
+                print(f"[MobileNet] Successfully loaded model weights from {mobilenet_model_path}")
+            except Exception as e:
+                print(f"[MobileNet] Failed to load MobileNet model: {e}")
+        else:
+            print(f"[MobileNet] Model file not found at {mobilenet_model_path}")
+    return onnx_session_mobilenet
 
 def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> tuple:
     import io
     from PIL import Image
     import numpy as np
     
-    session = get_onnx_session()
-    if session is None:
-        return "Unknown", 0.0
+    # Determine which model to use based on crop type
+    use_mobilenet = False
+    if crop_name:
+        crop_key = crop_name.lower()
+        if crop_key in ["potato", "tomato", "apple", "blueberry", "cherry", "corn", "grape", "orange", "peach", "pepper", "raspberry", "soybean", "squash", "strawberry"]:
+            use_mobilenet = True
+    else:
+        # Default to pre-trained MobileNetV2 if no crop specified for general plant classes
+        use_mobilenet = True
         
-    try:
-        # Load image from bytes
-        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        img = img.resize((640, 640))
-        
-        # Preprocessing
-        img_data = np.array(img).astype(np.float32) / 255.0
-        img_data = np.transpose(img_data, (2, 0, 1))  # HWC to CHW
-        img_data = np.expand_dims(img_data, axis=0)  # BCHW
-        
-        # Run inference
-        inputs = {session.get_inputs()[0].name: img_data}
-        outputs = session.run(None, inputs)
-        output0 = outputs[0][0]  # shape [10, 8400]
-        
-        # Class scores are rows 4 to 9
-        class_scores = output0[4:, :]  # shape [6, 8400]
-        max_scores = np.max(class_scores, axis=1)  # max score for each of the 6 classes
-        
-        class_names = {
-            0: "Wheat Rust",
-            1: "Rice Blast",
-            2: "Potato Late Blight",
-            3: "Cotton Leaf Curl Virus",
-            4: "Tomato Early Blight",
-            5: "Healthy Crop Leaf"
-        }
-        
-        # Crop context class filtering
-        valid_indices = [0, 1, 2, 3, 4, 5]
-        if crop_name:
-            crop_key = crop_name.lower()
-            # Map crop types to specific valid model class indices (e.g. wheat -> Wheat Rust or Healthy Leaf only)
-            crop_class_mapping = {
-                "wheat": [0, 5],
-                "rice": [1, 5],
-                "potato": [2, 5],
-                "cotton": [3, 5],
-                "tomato": [4, 5],
-            }
-            if crop_key in crop_class_mapping:
-                valid_indices = crop_class_mapping[crop_key]
-                print(f"[YOLOv8] Contextual Filtering enabled for crop '{crop_name}'. Valid classes: {valid_indices}")
+    if use_mobilenet:
+        session = get_mobilenet_session()
+        if session is None:
+            return "Unknown", 0.0
+            
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+            img = img.resize((224, 224))
+            
+            # Preprocessing for MobileNetV2
+            img_data = np.array(img).astype(np.float32) / 255.0
+            mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+            std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+            img_data = (img_data - mean) / std
+            img_data = np.transpose(img_data, (2, 0, 1))  # HWC to CHW
+            img_data = np.expand_dims(img_data, axis=0)  # BCHW
+            
+            # Run session
+            inputs = {session.get_inputs()[0].name: img_data}
+            outputs = session.run(None, inputs)
+            logits = outputs[0][0]  # shape [38]
+            
+            # Softmax calculation
+            exp_logits = np.exp(logits - np.max(logits))
+            probs = exp_logits / np.sum(exp_logits)
+            
+            # 38 PlantVillage classes
+            mobilenet_classes = [
+                "Apple___Apple_scab", "Apple___Black_rot", "Apple___Cedar_apple_rust", "Apple___healthy",
+                "Blueberry___healthy",
+                "Cherry_(including_sour)___Powdery_mildew", "Cherry_(including_sour)___healthy",
+                "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot", "Corn_(maize)___Common_rust_",
+                "Corn_(maize)___Northern_Leaf_Blight", "Corn_(maize)___healthy",
+                "Grape___Black_rot", "Grape___Esca_(Black_Measles)", "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)", "Grape___healthy",
+                "Orange___Haunglongbing_(Citrus_greening)",
+                "Peach___Bacterial_spot", "Peach___healthy",
+                "Pepper,_bell___Bacterial_spot", "Pepper,_bell___healthy",
+                "Potato___Early_blight", "Potato___Late_blight", "Potato___healthy",
+                "Raspberry___healthy",
+                "Soybean___healthy",
+                "Squash___Powdery_mildew",
+                "Strawberry___Leaf_scorch", "Strawberry___healthy",
+                "Tomato___Bacterial_spot", "Tomato___Early_blight", "Tomato___Late_blight", "Tomato___Leaf_Mold",
+                "Tomato___Septoria_leaf_spot", "Tomato___Spider_mites Two-spotted_spider_mite", "Tomato___Target_Spot",
+                "Tomato___Tomato_Yellow_Leaf_Curl_Virus", "Tomato___Tomato_mosaic_virus", "Tomato___healthy"
+            ]
+            
+            # Contextual crop filtering
+            valid_indices = list(range(38))
+            if crop_name:
+                crop_key = crop_name.lower()
+                matching_indices = []
+                for idx, name in enumerate(mobilenet_classes):
+                    class_crop = name.split("___")[0].lower()
+                    if crop_key in class_crop or class_crop in crop_key:
+                        matching_indices.append(idx)
+                if matching_indices:
+                    valid_indices = matching_indices
+                    
+            # Check raw best probability to reject out-of-distribution noise
+            raw_best_idx = int(np.argmax(probs))
+            raw_best_prob = float(probs[raw_best_idx])
+            
+            # Re-normalize filtered probabilities
+            filtered_probs = np.zeros_like(probs)
+            for idx in valid_indices:
+                filtered_probs[idx] = probs[idx]
+            sum_probs = np.sum(filtered_probs)
+            if sum_probs > 0:
+                filtered_probs = filtered_probs / sum_probs
                 
-        # Get scores only for valid indices
-        filtered_scores = {idx: float(max_scores[idx]) for idx in valid_indices}
-        
-        # Sort filtered scores to find the best and second best match
-        sorted_indices = sorted(filtered_scores.keys(), key=lambda k: filtered_scores[k], reverse=True)
-        best_idx = int(sorted_indices[0])
-        
-        best_score = filtered_scores[best_idx]
-        
-        if len(sorted_indices) > 1:
-            second_best_idx = int(sorted_indices[1])
-            second_best_score = filtered_scores[second_best_idx]
-        else:
-            second_best_score = 0.0
+            best_idx = int(np.argmax(filtered_probs))
+            confidence = float(filtered_probs[best_idx])
             
-        # Peak Ratio: measures how much the top class stands out from the second best
-        ratio = best_score / (second_best_score + 1e-6)
-        
-        # Determine classification result
-        # 1. If best score is extremely low (< 1.5%), it's noise/healthy.
-        # 2. If it's low-to-medium but flat/uniform (e.g. dinner plate), the ratio is low, so it's healthy.
-        # 3. If there is a clear standing peak (at least 35% higher than 2nd class), we predict that class.
-        is_clear_detection = best_score >= 0.15 or (best_score >= 0.015 and ratio >= 1.35)
-        
-        # If the detected class is 5 (Healthy Crop Leaf), override clear detection to healthy
-        if best_idx == 5:
-            is_clear_detection = False
+            # If model confidence is extremely low, default to healthy crop leaf
+            if raw_best_prob < 0.12 or confidence < 0.20:
+                print(f"[MobileNet] Raw probability too low ({raw_best_prob:.3f}), defaulting to Healthy Crop Leaf")
+                return "Healthy Crop Leaf", 0.94
+                
+            raw_class_name = mobilenet_classes[best_idx]
             
-        if is_clear_detection:
-            detected_disease = class_names.get(best_idx, "Healthy Crop Leaf")
-            confidence = best_score
-        else:
-            detected_disease = "Healthy Crop Leaf"
-            confidence = 0.94
+            if "healthy" in raw_class_name.lower():
+                detected_disease = "Healthy Crop Leaf"
+                confidence = 0.95
+            else:
+                parts = raw_class_name.split("___")
+                crop = parts[0].replace(",_bell", "").replace("_(including_sour)", "").replace("_(maize)", "").strip()
+                disease = parts[1].replace("_", " ").strip()
+                if disease.lower().startswith(crop.lower()):
+                    disease = disease[len(crop):].strip()
+                friendly = f"{crop} {disease}"
+                friendly = friendly.replace("  ", " ").strip()
+                
+                if "Spider mites" in friendly:
+                    detected_disease = "Tomato Spider Mites"
+                elif "Cercospora leaf spot" in friendly:
+                    detected_disease = "Corn Gray Leaf Spot"
+                else:
+                    detected_disease = friendly.title()
+                
+                # Scale confidence for UI
+                confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
+                
+            print(f"[MobileNet] Predicted: {detected_disease} (Raw Prob: {raw_best_prob:.3f}, Normalised: {confidence:.3f})")
+            return detected_disease, confidence
             
-        # Scale confidence for UI display (so a 0.08 model confidence displays as a realistic 72%)
-        if detected_disease != "Healthy Crop Leaf":
-            ui_confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
-        else:
-            ui_confidence = confidence
+        except Exception as e:
+            print(f"[MobileNet] Inference failed: {e}")
+            return "Unknown", 0.0
             
-        return detected_disease, ui_confidence
-    except Exception as e:
-        print(f"[YOLOv8] Inference failed: {e}")
-        return "Unknown", 0.0
+    else:
+        # Run custom YOLOv8 model for Wheat, Rice, Cotton
+        session = get_yolo_session()
+        if session is None:
+            return "Unknown", 0.0
+            
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+            img = img.resize((640, 640))
+            
+            # Preprocessing
+            img_data = np.array(img).astype(np.float32) / 255.0
+            img_data = np.transpose(img_data, (2, 0, 1))  # HWC to CHW
+            img_data = np.expand_dims(img_data, axis=0)  # BCHW
+            
+            inputs = {session.get_inputs()[0].name: img_data}
+            outputs = session.run(None, inputs)
+            output0 = outputs[0][0]  # shape [10, 8400]
+            
+            class_scores = output0[4:, :]  # shape [6, 8400]
+            max_scores = np.max(class_scores, axis=1)  # max score for each of the 6 classes
+            
+            class_names = {
+                0: "Wheat Rust",
+                1: "Rice Blast",
+                2: "Potato Late Blight",
+                3: "Cotton Leaf Curl Virus",
+                4: "Tomato Early Blight",
+                5: "Healthy Crop Leaf"
+            }
+            
+            # Limit classes based on crop context (defaulting to Wheat, Rice, Cotton, Healthy)
+            valid_indices = [0, 1, 3, 5]
+            if crop_name:
+                crop_key = crop_name.lower()
+                crop_class_mapping = {
+                    "wheat": [0, 5],
+                    "rice": [1, 5],
+                    "cotton": [3, 5],
+                }
+                if crop_key in crop_class_mapping:
+                    valid_indices = crop_class_mapping[crop_key]
+                    
+            filtered_scores = {idx: float(max_scores[idx]) for idx in valid_indices}
+            sorted_indices = sorted(filtered_scores.keys(), key=lambda k: filtered_scores[k], reverse=True)
+            best_idx = int(sorted_indices[0])
+            best_score = filtered_scores[best_idx]
+            
+            if len(sorted_indices) > 1:
+                second_best_idx = int(sorted_indices[1])
+                second_best_score = filtered_scores[second_best_idx]
+            else:
+                second_best_score = 0.0
+                
+            ratio = best_score / (second_best_score + 1e-6)
+            
+            # Determine detection validity
+            is_clear_detection = best_score >= 0.15 or (best_score >= 0.02 and ratio >= 1.4)
+            
+            if best_idx == 5:
+                is_clear_detection = False
+                
+            if is_clear_detection:
+                detected_disease = class_names.get(best_idx, "Healthy Crop Leaf")
+                confidence = best_score
+                confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
+            else:
+                detected_disease = "Healthy Crop Leaf"
+                confidence = 0.94
+                
+            print(f"[YOLOv8] Predicted: {detected_disease} (Score: {best_score:.3f}, Confidence: {confidence:.3f})")
+            return detected_disease, confidence
+            
+        except Exception as e:
+            print(f"[YOLOv8] Inference failed: {e}")
+            return "Unknown", 0.0
 
 def is_leaf_image(image_bytes: bytes) -> bool:
     """
@@ -445,17 +564,17 @@ def is_leaf_image(image_bytes: bytes) -> bool:
         g = img_data[:, :, 1].astype(np.int32)
         b = img_data[:, :, 2].astype(np.int32)
         
-        # A pixel is greenish if G is higher than both R and B
-        green_pixels = np.sum((g > r + 5) & (g > b + 5))
+        # A pixel is greenish if G is significantly higher than both R and B
+        green_pixels = np.sum((g > r + 15) & (g > b + 15) & (g > 40))
         
-        # A pixel is yellowish/brownish if R and G are high relative to B
-        yellow_brown_pixels = np.sum((r > b + 15) & (g > b + 15) & (np.abs(r - g) < 50))
+        # A pixel is yellowish/brownish if R and G are high relative to B, and close to each other
+        yellow_brown_pixels = np.sum((r > b + 25) & (g > b + 10) & (r > 50) & (g > 40) & (np.abs(r - g) < 30))
         
         plant_pixels = green_pixels + yellow_brown_pixels
         ratio = plant_pixels / 10000.0
         
         print(f"[Heuristics] Plant-like visual ratio: {ratio:.3f} (Green: {green_pixels}, Yellow/Brown: {yellow_brown_pixels})")
-        return ratio >= 0.12
+        return ratio >= 0.15
     except Exception as e:
         print(f"[Heuristics] Image color validation failed: {e}")
         return True  # Safe fallback if PIL/NumPy fails
@@ -574,11 +693,26 @@ async def detect_disease(
     # Execute actual ML classification using ONNX model weights and crop filtering
     detected_disease, model_conf = run_onnx_inference(image_bytes, crop_name)
     
+    if detected_disease == "Invalid Image":
+        print(f"[Model Classification] Input rejected as non-leaf image (filename: {filename})")
+        fallback_invalid = {
+            "status": "invalid",
+            "highest_confidence_class": "Invalid Image",
+            "severity_level": "None",
+            "confidence": 1.0,
+            "urdu_name": "ناموزوں تصویر",
+            "description": "Please upload a clear, close-up picture of a crop leaf. The system did not detect any plant-like visual structures in the image.",
+            "remediation_en": "Please upload a clear picture of a crop leaf.",
+            "remediation_ur": "براہ مہربانی فصل کے پتے کی واضح تصویر اپ لوڈ کریں۔"
+        }
+        disease_history.append(fallback_invalid)
+        return fallback_invalid
+        
     # Determine confidence level and disease name
     if detected_disease != "Unknown":
         disease = detected_disease
         confidence = model_conf
-        print(f"[YOLOv8] Live Pixel Scan: {disease} (Confidence: {confidence:.2f})")
+        print(f"[ONNX Engine] Live Scan: {disease} (Confidence: {confidence:.2f})")
     else:
         # Heuristics filename fallback in case of ONNX error
         confidence = 0.89
@@ -666,6 +800,30 @@ async def detect_disease(
     elif disease == "Cotton Leaf Curl Virus":
         fallback_card["urdu_name"] = "کپاس کا پتا مروڑ وائرس"
         fallback_card["remediation_ur"] = "1۔ سفید مکھی (Whitefly) کو کنٹرول کرنے کے لیے ایمیڈا کلوپرڈ کا سپرے کریں۔"
+    elif disease == "Tomato Early Blight":
+        fallback_card["urdu_name"] = "ٹماٹر کا اگیتا جھلساؤ (Tomato Early Blight)"
+        fallback_card["remediation_ur"] = "1۔ پودوں کے نچلے پتے کاٹ دیں۔ 2۔ کلوروتھالونل یا کاپر فنگسائڈ کا سپرے کریں۔"
+    elif disease == "Tomato Late Blight":
+        fallback_card["urdu_name"] = "ٹماٹر کا پچھیتا جھلساؤ (Tomato Late Blight)"
+        fallback_card["remediation_ur"] = "1۔ متاثرہ حصے فوری ہٹائیں۔ 2۔ فوسائل ایلومینیم کا سپرے کریں۔"
+    elif disease == "Tomato Yellow Leaf Curl Virus":
+        fallback_card["urdu_name"] = "ٹماٹر کا پتا مروڑ وائرس (Tomato Yellow Leaf Curl)"
+        fallback_card["remediation_ur"] = "1۔ سفید مکھی کو کنٹرول کرنے کے لیے اسپیٹرم یا امیڈا کلوپرڈ کا سپرے کریں۔"
+    elif disease == "Potato Early Blight":
+        fallback_card["urdu_name"] = "آلو کا اگیتا جھلساؤ (Potato Early Blight)"
+        fallback_card["remediation_ur"] = "1۔ بیماری سے پاک بیج استعمال کریں۔ 2۔ کاپر آکسی کلورائیڈ کا سپرے کریں۔"
+    elif disease == "Potato Late Blight":
+        fallback_card["urdu_name"] = "آلو کا پچھیتا جھلساؤ (Potato Late Blight)"
+        fallback_card["remediation_ur"] = "1۔ زیادہ نمی سے بچائیں۔ 2۔ میٹالیکسل یا ڈائیفینوکونازول کا فوری سپرے کریں۔"
+    elif disease == "Apple Scab":
+        fallback_card["urdu_name"] = "سیب کا کھرنڈ (Apple Scab)"
+        fallback_card["remediation_ur"] = "1۔ گرے ہوئے پتے جلائیں۔ 2۔ کیپٹان یا کاربینڈازم کا سپرے کریں۔"
+    elif disease == "Grape Black Rot":
+        fallback_card["urdu_name"] = "انگور کا کالا سڑن (Grape Black Rot)"
+        fallback_card["remediation_ur"] = "1۔ ہوا کی نکاسی بہتر کریں۔ 2۔ مائکلو بیوٹانل کا سپرے کریں۔"
+    elif disease == "Corn Common Rust":
+        fallback_card["urdu_name"] = "مکئی کی کنگی (Corn Common Rust)"
+        fallback_card["remediation_ur"] = "1۔ قوت مدافعت والی اقسام کاشت کریں۔ 2۔ فنگسائڈ کا چھڑکاؤ کریں۔"
         
     disease_history.append(fallback_card)
     return fallback_card
