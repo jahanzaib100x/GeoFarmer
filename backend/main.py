@@ -723,6 +723,21 @@ async def detect_disease(
             ])
         print(f"[YOLOv8] Heuristics Fallback: {disease}")
         
+    if disease == "Healthy Crop Leaf":
+        print(f"[Model Classification] Healthy leaf report generated (crop: {crop_name})")
+        fallback_healthy = {
+            "status": "success",
+            "highest_confidence_class": "Healthy Crop Leaf",
+            "severity_level": "None",
+            "confidence": confidence,
+            "urdu_name": "تندرست پتہ (Healthy Leaf)",
+            "description": f"The visual scan confirms that this {crop_name if crop_name else 'crop'} leaf exhibits robust chlorophyll levels with zero active pathogen patterns.",
+            "remediation_en": "No chemical treatment required. Maintain standard watering and fertilizer intervals.",
+            "remediation_ur": "فصل کا پتہ بالکل تندرست ہے۔ کسی بھی سپرے کی ضرورت نہیں، معمول کے مطابق پانی اور کھاد جاری رکھیں۔"
+        }
+        disease_history.append(fallback_healthy)
+        return fallback_healthy
+        
     system_prompt = (
         "You are an expert precision agricultural YOLOv8 computer vision model and crop pathologist. "
         "Your task is to analyze the detected crop leaf disease and return a highly detailed, professional diagnostic report in strict JSON format. "
