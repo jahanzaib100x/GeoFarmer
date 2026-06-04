@@ -4319,7 +4319,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             DropdownButtonFormField<String>(
               value: _yieldCrop,
               decoration: const InputDecoration(labelText: "Select Crop"),
-              items: ["Wheat (Sona-21)", "Cotton (BT-902)"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+              items: ["Wheat (Sona-21)", "Cotton (BT-902)", "Rice (Basmati)", "Potato (Red-S)", "Tomato (Sahil)"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
               onChanged: (val) {
                 if (val != null) setState(() => _yieldCrop = val);
               },
