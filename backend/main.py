@@ -513,7 +513,7 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
                 
             yolo_ratio = best_yolo_score / (second_best_yolo_score + 1e-6)
             
-            is_clear_detection = best_yolo_score >= 0.15 or (best_yolo_score >= 0.02 and yolo_ratio >= 1.4)
+            is_clear_detection = best_yolo_score >= 0.22
             
             if best_yolo_idx == 5:
                 is_clear_detection = False
