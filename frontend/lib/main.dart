@@ -7243,7 +7243,7 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
             "polygon_coords": coords,
             "crop_name": "Wheat",
           }),
-        ).timeout(const Duration(seconds: 15));
+        ).timeout(const Duration(seconds: 120));
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
           setState(() {
