@@ -1738,6 +1738,29 @@ def get_gee_ndvi(
             map_id_dict = ee.Image(clipped_ndvi).getMapId(vis_params)
             tile_url = map_id_dict['tile_fetcher'].url_format
             mode = "gee_live"
+            
+            try:
+                mean_dict = clipped_ndvi.reduceRegion(
+                    reducer=ee.Reducer.mean(), geometry=geom, scale=10, bestEffort=True, maxPixels=1e9
+                ).getInfo()
+                if mean_dict and 'NDVI' in mean_dict and mean_dict['NDVI'] is not None:
+                    ndvi_avg = round(float(mean_dict['NDVI']), 2)
+                    
+                    healthy_mask = clipped_ndvi.gt(0.6)
+                    average_mask = clipped_ndvi.gte(0.3).And(clipped_ndvi.lte(0.6))
+                    stressed_mask = clipped_ndvi.lt(0.3)
+                    
+                    healthy_area = healthy_mask.reduceRegion(ee.Reducer.sum(), geom, 10, bestEffort=True).getInfo().get('NDVI', 0)
+                    average_area = average_mask.reduceRegion(ee.Reducer.sum(), geom, 10, bestEffort=True).getInfo().get('NDVI', 0)
+                    stressed_area = stressed_mask.reduceRegion(ee.Reducer.sum(), geom, 10, bestEffort=True).getInfo().get('NDVI', 0)
+                    
+                    total = healthy_area + average_area + stressed_area
+                    if total > 0:
+                        healthy_pct = round((healthy_area / total) * 100, 1)
+                        average_pct = round((average_area / total) * 100, 1)
+                        stressed_pct = round((stressed_area / total) * 100, 1)
+            except Exception as e:
+                print(f"[GEE] NDVI Stats error: {e}")
         except Exception as e:
             print(f"[GEE] NDVI error: {e}")
             
@@ -1861,6 +1884,29 @@ def get_gee_thermal(
             map_id_dict = ee.Image(clipped_thermal).getMapId(vis_params)
             tile_url = map_id_dict['tile_fetcher'].url_format
             mode = "gee_live"
+            
+            try:
+                mean_dict = clipped_thermal.reduceRegion(
+                    reducer=ee.Reducer.mean(), geometry=geom, scale=30, bestEffort=True, maxPixels=1e9
+                ).getInfo()
+                if mean_dict and 'ST_B10' in mean_dict and mean_dict['ST_B10'] is not None:
+                    temp_avg = round(float(mean_dict['ST_B10']), 1)
+                    
+                    optimal_mask = clipped_thermal.gte(temp_avg - 2).And(clipped_thermal.lte(temp_avg + 2))
+                    stressed_mask = clipped_thermal.gt(temp_avg + 2)
+                    overwatered_mask = clipped_thermal.lt(temp_avg - 2)
+                    
+                    optimal_area = optimal_mask.reduceRegion(ee.Reducer.sum(), geom, 30, bestEffort=True).getInfo().get('ST_B10', 0)
+                    stressed_area = stressed_mask.reduceRegion(ee.Reducer.sum(), geom, 30, bestEffort=True).getInfo().get('ST_B10', 0)
+                    overwatered_area = overwatered_mask.reduceRegion(ee.Reducer.sum(), geom, 30, bestEffort=True).getInfo().get('ST_B10', 0)
+                    
+                    total = optimal_area + stressed_area + overwatered_area
+                    if total > 0:
+                        optimal_pct = round((optimal_area / total) * 100, 1)
+                        stressed_pct = round((stressed_area / total) * 100, 1)
+                        overwatered_pct = round((overwatered_area / total) * 100, 1)
+            except Exception as e:
+                print(f"[GEE] Thermal Stats error: {e}")
         except Exception as e:
             print(f"[GEE] Thermal error: {e}")
             
