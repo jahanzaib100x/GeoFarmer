@@ -1,9 +1,56 @@
 import os
+
+# Manual .env loader
+def load_env_file(filepath=".env"):
+    if os.path.exists(filepath):
+        print(f"[Config] Loading environment variables from {filepath}")
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        parts = line.split("=", 1)
+                        if len(parts) == 2:
+                            k = parts[0].strip()
+                            v = parts[1].strip().strip('"').strip("'")
+                            if k and v:
+                                os.environ[k] = v
+        except Exception as e:
+            print(f"[Config] Failed to load {filepath}: {e}")
+
+load_env_file("backend/.env")
+load_env_file(".env")
+
 import time
 import shutil
 import threading
 import json
 import random
+import ee
+from google.oauth2.service_account import Credentials
+from typing import Dict, Any, List, Optional
+
+# Initialize Earth Engine
+gee_ready = False
+try:
+    print("[GEE] Initializing Google Earth Engine...")
+    gee_creds_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geofarmer-498712-c28893c5b1e9.json")
+    gee_key_env = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
+    if os.path.exists(gee_creds_path):
+        credentials = Credentials.from_service_account_file(gee_creds_path, scopes=["https://www.googleapis.com/auth/earthengine"])
+        ee.Initialize(credentials)
+        gee_ready = True
+        print("[GEE] Successfully initialized Google Earth Engine from local credentials file!")
+    elif gee_key_env:
+        key_data = json.loads(gee_key_env)
+        credentials = Credentials.from_service_account_info(key_data, scopes=["https://www.googleapis.com/auth/earthengine"])
+        ee.Initialize(credentials)
+        gee_ready = True
+        print("[GEE] Successfully initialized Google Earth Engine from environment variable!")
+    else:
+        print(f"[GEE] Credentials file not found and GEE_SERVICE_ACCOUNT_KEY env var not set. Running without Earth Engine.")
+except Exception as e:
+    print(f"[GEE] Failed to initialize Earth Engine: {e}")
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -170,15 +217,18 @@ if GEMINI_API_KEY:
         print(f"[Gemini] Failed to initialize Gemini API: {ge}")
         gemini_last_error = f"Initialization error: {ge}"
 
-def call_deepseek_api(system_prompt: str, user_prompt: str) -> str:
+def call_deepseek_api(system_prompt: str, user_prompt: str, api_key: Optional[str] = None) -> str:
     """
     Synchronous helper to execute prompt requests against the paid DeepSeek chat completion API.
     """
+    key_to_use = api_key or os.environ.get("DEEPSEEK_API_KEY", "sk-9665bba745484060b16bc579df18484d")
+    if not key_to_use:
+        return ""
     import requests as http_req
     url = "https://api.deepseek.com/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+        "Authorization": f"Bearer {key_to_use}"
     }
     payload = {
         "model": "deepseek-chat",
@@ -199,6 +249,26 @@ def call_deepseek_api(system_prompt: str, user_prompt: str) -> str:
             print(f"[DeepSeek] Error status code {response.status_code}: {response.text}")
     except Exception as e:
         print(f"[DeepSeek] Exception encountered: {e}")
+    return ""
+
+def call_gemini_api(system_prompt: str, user_prompt: str, api_key: Optional[str] = None) -> str:
+    """
+    Synchronous helper to execute prompt requests against the Gemini API.
+    """
+    key_to_use = api_key or os.environ.get("GEMINI_API_KEY")
+    if not key_to_use:
+        return ""
+    try:
+        import google.generativeai as genai
+        # Configure dynamically since key might change per-request (via client header)
+        genai.configure(api_key=key_to_use)
+        # We use gemini-2.5-flash as initialized in previous steps, but configured dynamically
+        model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=system_prompt)
+        response = model.generate_content(user_prompt)
+        if response and response.text:
+            return response.text.strip()
+    except Exception as e:
+        print(f"[Gemini Error] call_gemini_api failed: {e}")
     return ""
 
 class TelemetryResponse(BaseModel):
@@ -345,6 +415,34 @@ def get_mobilenet_session():
             print(f"[MobileNet] Model file not found at {mobilenet_model_path}")
     return onnx_session_mobilenet
 
+def nms_boxes(boxes, scores, iou_threshold=0.45):
+    if len(boxes) == 0:
+        return []
+    import numpy as np
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+    areas = (x2 - x1) * (y2 - y1)
+    order = scores.argsort()[::-1]
+    keep = []
+    while order.size > 0:
+        i = order[0]
+        keep.append(i)
+        xx1 = np.maximum(x1[i], x1[order[1:]])
+        yy1 = np.maximum(y1[i], y1[order[1:]])
+        xx2 = np.minimum(x2[i], x2[order[1:]])
+        yy2 = np.minimum(y2[i], y2[order[1:]])
+        w = np.maximum(0.0, xx2 - xx1)
+        h = np.maximum(0.0, yy2 - yy1)
+        inter = w * h
+        ovr = inter / (areas[i] + areas[order[1:]] - inter + 1e-6)
+        inds = np.where(ovr <= iou_threshold)[0]
+        order = order[inds + 1]
+    return keep
+
 def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> tuple:
     import io
     from PIL import Image
@@ -355,7 +453,7 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
     session_yolo = get_yolo_session()
     
     if session_mobilenet is None and session_yolo is None:
-        return "Unknown", 0.0
+        return "Unknown", 0.0, []
         
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
@@ -371,7 +469,7 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
         if use_mobilenet:
             session = session_mobilenet
             if session is None:
-                return "Unknown", 0.0
+                return "Unknown", 0.0, []
                 
             img_mn = img.resize((224, 224))
             img_data_mn = np.array(img_mn).astype(np.float32) / 255.0
@@ -438,7 +536,7 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
             # Default to healthy if confidence is extremely low
             if raw_best_prob < 0.12 or confidence < 0.20:
                 print(f"[MobileNet] Low confidence (Raw: {raw_best_prob:.3f}, Conf: {confidence:.3f}), defaulting to Healthy Crop Leaf")
-                return "Healthy Crop Leaf", 0.94
+                return "Healthy Crop Leaf", 0.94, []
                 
             raw_class_name = mobilenet_classes[best_idx]
             
@@ -463,13 +561,25 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
                 
                 confidence = float(np.clip(0.70 + 0.30 * confidence, 0.72, 0.98))
                 
+            mobilenet_boxes = []
+            if detected_disease != "Healthy Crop Leaf":
+                # Simulated box for classification model
+                mobilenet_boxes.append({
+                    "x": 0.2,
+                    "y": 0.2,
+                    "width": 0.6,
+                    "height": 0.6,
+                    "class_name": detected_disease,
+                    "confidence": round(confidence, 2)
+                })
+                
             print(f"[MobileNet] Strict Prediction: {detected_disease} (Confidence: {confidence:.3f})")
-            return detected_disease, confidence
+            return detected_disease, confidence, mobilenet_boxes
             
         else:
             session = session_yolo
             if session is None:
-                return "Unknown", 0.0
+                return "Unknown", 0.0, []
                 
             img_yolo = img.resize((640, 640))
             img_data_yolo = np.array(img_yolo).astype(np.float32) / 255.0
@@ -479,9 +589,6 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
             inputs_yolo = {session.get_inputs()[0].name: img_data_yolo}
             outputs_yolo = session.run(None, inputs_yolo)
             output0 = outputs_yolo[0][0]
-            
-            class_scores = output0[4:, :]
-            max_scores = np.max(class_scores, axis=1)
             
             class_names_yolo = {
                 0: "Wheat Rust",
@@ -501,20 +608,72 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
             elif "cotton" in crop_key:
                 valid_yolo_indices = [3, 5]
                 
+            # Extract bounding boxes
+            pred_boxes = output0[:4, :].T
+            pred_scores = output0[4:, :].T
+            
+            cand_boxes = []
+            cand_scores = []
+            cand_class_ids = []
+            
+            conf_threshold = 0.22
+            for i in range(8400):
+                box_scores = pred_scores[i]
+                class_id = int(np.argmax(box_scores))
+                if class_id not in valid_yolo_indices:
+                    best_valid_idx = valid_yolo_indices[0]
+                    best_valid_score = box_scores[best_valid_idx]
+                    for vi in valid_yolo_indices[1:]:
+                        if box_scores[vi] > best_valid_score:
+                            best_valid_score = box_scores[vi]
+                            best_valid_idx = vi
+                    class_id = best_valid_idx
+                    score = best_valid_score
+                else:
+                    score = box_scores[class_id]
+                
+                if score >= conf_threshold and class_id != 5:
+                    x_c, y_c, w_val, h_val = pred_boxes[i]
+                    x1 = (x_c - w_val / 2.0) / 640.0
+                    y1 = (y_c - h_val / 2.0) / 640.0
+                    x2 = (x_c + w_val / 2.0) / 640.0
+                    y2 = (y_c + h_val / 2.0) / 640.0
+                    
+                    cand_boxes.append([x1, y1, x2, y2])
+                    cand_scores.append(float(score))
+                    cand_class_ids.append(class_id)
+            
+            keep = nms_boxes(cand_boxes, cand_scores, iou_threshold=0.45)
+            yolo_boxes = []
+            for idx in keep:
+                x1, y1, x2, y2 = cand_boxes[idx]
+                cid = cand_class_ids[idx]
+                score = cand_scores[idx]
+                
+                x = max(0.0, min(1.0, x1))
+                y = max(0.0, min(1.0, y1))
+                w = max(0.0, min(1.0 - x, x2 - x1))
+                h = max(0.0, min(1.0 - y, y2 - y1))
+                
+                class_name = class_names_yolo.get(cid, "Disease")
+                
+                yolo_boxes.append({
+                    "x": round(x, 3),
+                    "y": round(y, 3),
+                    "width": round(w, 3),
+                    "height": round(h, 3),
+                    "class_name": class_name,
+                    "confidence": round(score, 2)
+                })
+            
+            class_scores = output0[4:, :]
+            max_scores = np.max(class_scores, axis=1)
             filtered_yolo = {idx: float(max_scores[idx]) for idx in valid_yolo_indices}
             sorted_yolo_idx = sorted(filtered_yolo.keys(), key=lambda k: filtered_yolo[k], reverse=True)
             best_yolo_idx = int(sorted_yolo_idx[0])
             best_yolo_score = filtered_yolo[best_yolo_idx]
             
-            if len(sorted_yolo_idx) > 1:
-                second_best_yolo_score = filtered_yolo[int(sorted_yolo_idx[1])]
-            else:
-                second_best_yolo_score = 0.0
-                
-            yolo_ratio = best_yolo_score / (second_best_yolo_score + 1e-6)
-            
             is_clear_detection = best_yolo_score >= 0.22
-            
             if best_yolo_idx == 5:
                 is_clear_detection = False
                 
@@ -525,15 +684,16 @@ def run_onnx_inference(image_bytes: bytes, crop_name: Optional[str] = None) -> t
             else:
                 detected_disease = "Healthy Crop Leaf"
                 confidence = 0.94
+                yolo_boxes = []
                 
-            print(f"[YOLOv8] Strict Prediction: {detected_disease} (Confidence: {confidence:.3f})")
-            return detected_disease, confidence
+            print(f"[YOLOv8] Strict Prediction: {detected_disease} (Confidence: {confidence:.3f}) with {len(yolo_boxes)} boxes")
+            return detected_disease, confidence, yolo_boxes
             
     except Exception as e:
         print(f"[ONNX Engine] Inference failed: {e}")
         import traceback
         traceback.print_exc()
-        return "Unknown", 0.0
+        return "Unknown", 0.0, []
 
 def is_leaf_image(image_bytes: bytes) -> bool:
     """
@@ -576,7 +736,7 @@ async def detect_disease(
     """
     Ingests a crop leaf image via multipart/form-data.
     Executes a real-time pixel analysis on the custom YOLOv8 ONNX model with crop name filtering,
-    then constructs a rich, bilingual diagnostic report using DeepSeek.
+    then constructs a rich, bilingual diagnostic report using DeepSeek/Gemini.
     """
     filename = image.filename
     filename_lower = filename.lower()
@@ -622,6 +782,7 @@ async def detect_disease(
             Your task:
             1. Determine if this image is a valid close-up of a crop leaf/plant. If the image is NOT a crop leaf (e.g. it is a dinner plate, food, a face, keyboard, shoe, animal, or random room background), you MUST return a JSON with "status": "invalid".
             2. If it is a leaf, identify the actual plant/crop visible in the image. Classify if it has any disease (such as Wheat Rust, Rice Blast, Potato Late Blight, Cotton Leaf Curl Virus, Tomato Early Blight, Apple Scab, Grape Black Rot, etc.) or if it is healthy. Do not be restricted by the selected farm crop '{crop_name}' if the image clearly shows a different crop leaf.
+            3. If it has a disease, identify one or more bounding boxes where the disease symptoms/lesions are located on the leaf. Coordinate space is normalized from 0.0 to 1.0 (where x=0, y=0 is top-left, and x=1, y=1 is bottom-right).
             
             You must return a raw JSON response. Do not include markdown wraps, code blocks, or triple backticks.
             Return raw JSON only, matching this structure:
@@ -633,7 +794,17 @@ async def detect_disease(
               "urdu_name": "Urdu translation (e.g. آلو کا جھلساؤ, پیلا کُنگ) or 'ناموزوں تصویر'",
               "description": "Short explanation of the diagnosis based on the image visual details.",
               "remediation_en": "Organic remedy and chemical spray recommendation (or 'Please upload a clear picture of a crop leaf' if invalid).",
-              "remediation_ur": "علاج (اردو میں)"
+              "remediation_ur": "علاج (اردو میں)",
+              "bounding_boxes": [
+                {{
+                  "x": 0.25,
+                  "y": 0.30,
+                  "width": 0.40,
+                  "height": 0.50,
+                  "class_name": "Wheat Rust",
+                  "confidence": 0.95
+                }}
+              ]
             }}
             """
             
@@ -650,6 +821,9 @@ async def detect_disease(
             resp_text = resp_text.strip()
             
             gemini_diagnostic = json.loads(resp_text)
+            if "bounding_boxes" not in gemini_diagnostic:
+                gemini_diagnostic["bounding_boxes"] = []
+                
             print(f"[Gemini] Diagnostic output: {gemini_diagnostic.get('highest_confidence_class')}")
             
             # Save to history and return immediately
@@ -673,7 +847,8 @@ async def detect_disease(
             "urdu_name": "ناموزوں تصویر",
             "description": "Please upload a clear, close-up picture of a crop leaf. The system did not detect any plant-like visual structures in the image.",
             "remediation_en": "Please upload a clear picture of a crop leaf.",
-            "remediation_ur": "براہ مہربانی فصل کے پتے کی واضح تصویر اپ لوڈ کریں۔"
+            "remediation_ur": "براہ مہربانی فصل کے پتے کی واضح تصویر اپ لوڈ کریں۔",
+            "bounding_boxes": []
         }
         disease_history.append(fallback_invalid)
         return fallback_invalid
@@ -693,14 +868,16 @@ async def detect_disease(
             "urdu_name": "کلاؤڈ تشخیصی سروس درکار ہے",
             "description": f"The selected crop '{crop_name}' requires advanced cloud diagnostic models.",
             "remediation_en": "Please configure a valid Gemini API Key in the settings to enable advanced diagnostic capabilities for all crops.",
-            "remediation_ur": "اس فصل کی تشخیص کے لیے نیٹ ورک سیٹنگز میں جیمنی اے پی آئی کی (Gemini API Key) کا ہونا لازمی ہے۔"
+            "remediation_ur": "اس فصل کی تشخیص کے لیے نیٹ ورک سیٹنگز میں جیمنی اے پی آئی کی (Gemini API Key) کا ہونا لازمی ہے۔",
+            "bounding_boxes": []
         }
         disease_history.append(unsupported_res)
         return unsupported_res
 
     # Run ML inference or heuristic model matching
+    boxes = []
     if any(sc in crop_key for sc in supported_onnx_crops):
-        detected_disease, model_conf = run_onnx_inference(image_bytes, crop_name)
+        detected_disease, model_conf, boxes = run_onnx_inference(image_bytes, crop_name)
     else:
         # Heuristic fallback for Mango, Citrus, Sugarcane, Onion
         model_conf = 0.88
@@ -718,6 +895,17 @@ async def detect_disease(
                 detected_disease = "Onion Purple Blotch"
             else:
                 detected_disease = "Healthy Crop Leaf"
+            
+            # Generate simulated box for heuristics
+            if detected_disease != "Healthy Crop Leaf":
+                boxes = [{
+                    "x": 0.25,
+                    "y": 0.25,
+                    "width": 0.50,
+                    "height": 0.50,
+                    "class_name": detected_disease,
+                    "confidence": model_conf
+                }]
     
     if detected_disease == "Invalid Image":
         print(f"[Model Classification] Input rejected as non-leaf image (filename: {filename})")
@@ -729,7 +917,8 @@ async def detect_disease(
             "urdu_name": "ناموزوں تصویر",
             "description": "Please upload a clear, close-up picture of a crop leaf. The system did not detect any plant-like visual structures in the image.",
             "remediation_en": "Please upload a clear picture of a crop leaf.",
-            "remediation_ur": "براہ مہربانی فصل کے پتے کی واضح تصویر اپ لوڈ کریں۔"
+            "remediation_ur": "براہ مہربانی فصل کے پتے کی واضح تصویر اپ لوڈ کریں۔",
+            "bounding_boxes": []
         }
         disease_history.append(fallback_invalid)
         return fallback_invalid
@@ -760,6 +949,17 @@ async def detect_disease(
                 "Cotton Leaf Curl Virus", "Tomato Early Blight", "Healthy Crop Leaf"
             ])
         print(f"[YOLOv8] Heuristics Fallback: {disease}")
+        if disease != "Healthy Crop Leaf":
+            boxes = [{
+                "x": 0.25,
+                "y": 0.25,
+                "width": 0.50,
+                "height": 0.50,
+                "class_name": disease,
+                "confidence": confidence
+            }]
+        else:
+            boxes = []
         
     if disease == "Healthy Crop Leaf":
         print(f"[Model Classification] Healthy leaf report generated (crop: {crop_name})")
@@ -771,7 +971,8 @@ async def detect_disease(
             "urdu_name": "تندرست پتہ (Healthy Leaf)",
             "description": f"The visual scan confirms that this {crop_name if crop_name else 'crop'} leaf exhibits robust chlorophyll levels with zero active pathogen patterns.",
             "remediation_en": "No chemical treatment required. Maintain standard watering and fertilizer intervals.",
-            "remediation_ur": "فصل کا پتہ بالکل تندرست ہے۔ کسی بھی سپرے کی ضرورت نہیں، معمول کے مطابق پانی اور کھاد جاری رکھیں۔"
+            "remediation_ur": "فصل کا پتہ بالکل تندرست ہے۔ کسی بھی سپرے کی ضرورت نہیں، معمول کے مطابق پانی اور کھاد جاری رکھیں۔",
+            "bounding_boxes": []
         }
         disease_history.append(fallback_healthy)
         return fallback_healthy
@@ -806,14 +1007,9 @@ async def detect_disease(
     if api_response:
         try:
             # Clean possible markdown wrap from LLM output
-            cleaned_resp = api_response
-            if cleaned_resp.startswith("```json"):
-                cleaned_resp = cleaned_resp[7:]
-            if cleaned_resp.endswith("```"):
-                cleaned_resp = cleaned_resp[:-3]
-            cleaned_resp = cleaned_resp.strip()
-            
+            cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
             diagnostic_data = json.loads(cleaned_resp)
+            diagnostic_data["bounding_boxes"] = boxes
             disease_history.append(diagnostic_data)
             return diagnostic_data
         except Exception as json_err:
@@ -829,7 +1025,8 @@ async def detect_disease(
         "urdu_name": "فصل کا روگ" if disease != "Healthy Crop Leaf" else "تندرست پتہ",
         "description": f"Volumetric stress triggers typical {disease} spotting on the leaf vascular network.",
         "remediation_en": "Apply Propiconazole or Tebuconazole fungicide spray. Clear standing water blocks.",
-        "remediation_ur": "1۔ متاثرہ پتے الگ کریں۔ 2۔ پھپھوند کش دوا (Fungicide) ٹیبوکونازول کا سپرے کریں۔"
+        "remediation_ur": "1۔ متاثرہ پتے الگ کریں۔ 2۔ پھپھوند کش دوا (Fungicide) ٹیبوکونازول کا سپرے کریں۔",
+        "bounding_boxes": boxes
     }
     
     if disease == "Wheat Rust":
@@ -887,12 +1084,113 @@ async def detect_disease(
 
 class ChatRequest(BaseModel):
     prompt: str
-    land_context: Optional[str] = "Default Farm"
+    land_context: Optional[str] = None
+
+class TranslateRequest(BaseModel):
+    text: str
+    source_lang: str
+    target_lang: str
+
+@app.post("/api/ai/translate")
+def ai_translate(
+    payload: TranslateRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
+    """
+    Translates agricultural texts or user inputs across English and Pakistani regional dialects:
+    Urdu, Punjabi, Pashto, Sindhi, Balochi, Saraiki.
+    """
+    text = payload.text
+    src = payload.source_lang
+    tgt = payload.target_lang
+    
+    lang_names = {
+        "en": "English",
+        "ur": "Urdu",
+        "pa": "Punjabi",
+        "ps": "Pashto",
+        "sd": "Sindhi",
+        "bal": "Balochi",
+        "sk": "Saraiki"
+    }
+    
+    src_name = lang_names.get(src.lower(), src)
+    tgt_name = lang_names.get(tgt.lower(), tgt)
+    
+    system_prompt = (
+        "You are an expert bilingual agriculture translator in Pakistan. "
+        f"Translate the given text from {src_name} to {tgt_name}. "
+        "Preserve agricultural terminology, local names of crops, fertilizers, and diseases accurately. "
+        "Return ONLY the translated text. Do not add explanations, notes, metadata or markdown wrappers. "
+        "Just the pure translated string."
+    )
+    
+    user_prompt = f"Text to translate:\n{text}"
+    
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+        if api_response:
+            return {
+                "status": "success",
+                "translated_text": api_response.strip(),
+                "source": "Gemini translation"
+            }
+            
+    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+    if deepseek_key:
+        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+        if api_response:
+            return {
+                "status": "success",
+                "translated_text": api_response.strip(),
+                "source": "DeepSeek translation"
+            }
+            
+    text_lower = text.lower().strip()
+    offline_translations = {
+        ("en", "ur"): {
+            "when should i irrigate wheat?": "مجھے گندم کی آبپاشی کب کرنی چاہیے؟",
+            "wheat rust": "گندم کا کُنگ",
+            "rice blast": "چاول کا بلاسٹ",
+            "potato late blight": "آلو کا جھلساؤ",
+            "cotton leaf curl virus": "کپاس کا لیف کرل وائرس"
+        },
+        ("ur", "en"): {
+            "مجھے گندم کی آبپاشی کب کرنی چاہیے؟": "When should I irrigate wheat?",
+            "گندم کا کُنگ": "wheat rust",
+            "چاول کا بلاسٹ": "rice blast",
+            "آلو کا جھلساؤ": "potato late blight",
+            "کپاس کا لیف کرل وائرس": "cotton leaf curl virus"
+        }
+    }
+    
+    pair = (src.lower(), tgt.lower())
+    translated_fallback = None
+    if pair in offline_translations:
+        translated_fallback = offline_translations[pair].get(text_lower)
+        
+    if not translated_fallback:
+        if tgt.lower() == "ur":
+            translated_fallback = f"مقامی ترجمہ (آف لائن): '{text}'"
+        else:
+            translated_fallback = f"Offline Localized Translation: '{text}' (From {src} to {tgt})"
+            
+    return {
+        "status": "success",
+        "translated_text": translated_fallback,
+        "source": "Offline rule engine"
+    }
 
 @app.post("/api/ai/chat")
-def ai_chat(payload: ChatRequest):
+def ai_chat(
+    payload: ChatRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
     """
-    Exposes an agricultural chatbot endpoint. Integrates DeepSeek API
+    Exposes an agricultural chatbot endpoint. Integrates Gemini API (with DeepSeek fallback)
     to deliver real-time, bilingual advice on farming, irrigation, and crop protection.
     Features robust language detection, handling Urdu, English, and Roman Urdu seamlessly.
     """
@@ -909,14 +1207,27 @@ def ai_chat(payload: ChatRequest):
         "Directly answer the query without excessive introductions."
     )
     
-    api_response = call_deepseek_api(system_prompt, prompt)
-    
-    if api_response:
-        return {
-            "status": "success",
-            "reply": api_response,
-            "source": "DeepSeek paid engine"
-        }
+    # Try Gemini API first (Primary)
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, prompt, api_key=gemini_key)
+        if api_response:
+            return {
+                "status": "success",
+                "reply": api_response,
+                "source": "Gemini primary engine"
+            }
+            
+    # Fallback to DeepSeek
+    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+    if deepseek_key:
+        api_response = call_deepseek_api(system_prompt, prompt, api_key=deepseek_key)
+        if api_response:
+            return {
+                "status": "success",
+                "reply": api_response,
+                "source": "DeepSeek fallback engine"
+            }
         
     # Offline Local Agriculture Experts Fallback
     prompt_lower = prompt.lower()
@@ -951,7 +1262,11 @@ class YieldRequest(BaseModel):
     growth_stage: str
 
 @app.post("/api/ai/yield")
-def predict_yield(payload: YieldRequest):
+def predict_yield(
+    payload: YieldRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
     """
     Leverages DeepSeek to calculate yield forecast outputs based on custom land measurements and telemetry.
     """
@@ -982,7 +1297,14 @@ def predict_yield(payload: YieldRequest):
     }}
     """
     
-    api_response = call_deepseek_api(system_prompt, user_prompt)
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    api_response = None
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+        
+    if not api_response:
+        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
     if api_response:
         try:
             cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
@@ -1008,38 +1330,58 @@ class NegotiationRequest(BaseModel):
     user_speech_text: str
 
 @app.post("/api/ai/negotiation")
-def evaluate_negotiation(payload: NegotiationRequest):
+def evaluate_negotiation(
+    payload: NegotiationRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
     """
-    DeepSeek-powered audio/text bargaining negotiation coach. Evaluates farmer dialogues in Urdu or Roman Urdu.
+    Gemini-powered (with DeepSeek fallback) audio/text bargaining negotiation coach. Evaluates farmer dialogues in Urdu or Roman Urdu.
     """
     system_prompt = (
-        "You are an expert Mandi trading negotiation coach inside Pakistan. "
-        "Evaluate the farmer's bargaining statement against wholesalers. "
-        "Rate their bargaining efficiency out of 100, suggest improvements in Urdu and English, "
-        "and provide current target market price suggestions. Return raw JSON only."
+        "You are an expert Mandi trading negotiation coach and senior commission agent (Aroti) advisor in Pakistan. "
+        "Your task is to analyze the farmer's bargaining statement against wholesalers/purchasers. "
+        "1. Identify if the wholesaler is using common market tactics: lowball anchoring, moisture deductions ('nami/katoti' claims), quality discounting ('B-grade' claims), or market glut scare tactics.\n"
+        "2. Grade the farmer's statement out of 100 based on assertion level, pricing justification, and usage of leverage.\n"
+        "3. Provide tactical feedback in Urdu and English: explain what tactic is being played and suggest an exact counter-tactic (e.g., citing Faisalabad, Multan, or Lahore government mandi rate sheets, arguing moisture is below 12%, or referencing seed varieties like BT-902 cotton or Basmati premium length).\n"
+        "4. Output a strict JSON structure containing score, feedback_en, feedback_ur, target_mandi_price, tips_en, and tips_ur. Return ONLY raw JSON without markdown decoration."
     )
     
     user_prompt = f"""
-    Farmer Bargaining Dialogue: '{payload.user_speech_text}'
+    Farmer Bargaining statement/dialogue: '{payload.user_speech_text}'
     
-    Return strict JSON format:
+    Evaluate this statement and return a JSON response matching this schema:
     {{
-      "score": 78,
-      "feedback_en": "Excellent tone. You should reference the Faisalabad and Multan government mandi price lists to demand Rs. 150 higher.",
-      "feedback_ur": "بہترین سودے بازی! آپ کو ملتان منڈی کے سرکاری ریٹس کا حوالہ دے کر مزید 150 روپے فی من بڑھانے کا مطالبہ کرنا چاہیے تھا۔",
-      "target_mandi_price": "Rs. 4,250 / 40kg",
-      "tips_en": "Mention premium seed quality BT-902 and dry moisture grading.",
-      "tips_ur": "سرکاری ریٹ لسٹ اور بیج کی اعلیٰ کوالٹی کا ذکر کر کے دباؤ بڑھائیں۔"
+      "score": 85,
+      "feedback_en": "You asserted yourself well, but you should explicitly call out the wholesaler's moisture deduction tactic and cite the official Multan Mandi rate sheet (Rs. 4,400) to counter their low offer.",
+      "feedback_ur": "آپ نے اپنے موقف کا دفاع اچھا کیا، لیکن آپ کو آڑھتی کی نمی (کٹوتی) کی چال کا منہ توڑ جواب دینا چاہیے تھا اور ملتان منڈی کے سرکاری نرخ نامے (4400 روپے) کا حوالہ دے کر قیمت بڑھانے کا مطالبہ کرنا چاہیے تھا۔",
+      "target_mandi_price": "Rs. 4,350 - 4,450 / 40kg",
+      "tips_en": "Reference premium seed grading (e.g. BT-902, Super Basmati) and assert that the moisture level is below the standard 12% limit.",
+      "tips_ur": "کپاس کی اعلیٰ کوالٹی (BT-902) اور نمی کی شرح 12 فیصد سے کم ہونے کا حوالہ دے کر قیمت پر اصرار کریں۔"
     }}
     """
     
-    api_response = call_deepseek_api(system_prompt, user_prompt)
-    if api_response:
-        try:
-            cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
-            return json.loads(cleaned_resp)
-        except Exception as e:
-            print(f"Failed parsing negotiation JSON: {e}")
+    # Try Gemini API first (Primary)
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+        if api_response:
+            try:
+                cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
+                return json.loads(cleaned_resp)
+            except Exception as e:
+                print(f"Failed parsing Gemini negotiation JSON: {e}")
+                
+    # Fallback to DeepSeek
+    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+    if deepseek_key:
+        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+        if api_response:
+            try:
+                cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
+                return json.loads(cleaned_resp)
+            except Exception as e:
+                print(f"Failed parsing DeepSeek negotiation JSON: {e}")
             
     return {
         "score": 70,
@@ -1120,6 +1462,41 @@ def submit_complaint(payload: ComplaintRequest):
         f"براہ مہربانی اس پر فوری کارروائی عمل میں لائیں۔ شکریہ۔"
     )
     
+    # Try sending real SMTP email if configuration is present
+    smtp_server = os.environ.get("SMTP_SERVER")
+    smtp_port_str = os.environ.get("SMTP_PORT")
+    smtp_user = os.environ.get("SMTP_USERNAME")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    
+    email_sent = False
+    smtp_error = None
+    
+    if smtp_server and smtp_port_str and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            
+            smtp_port = int(smtp_port_str)
+            msg = MIMEText(email_draft_en, "plain", "utf-8")
+            msg["Subject"] = f"[OFFICIAL COMPLAINT] {payload.subject} - Ref: {complaint_ref}"
+            msg["From"] = smtp_user
+            msg["To"] = target_email
+            
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=5)
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [target_email], msg.as_string())
+            server.quit()
+            
+            email_sent = True
+            print(f"[SMTP] Complaint email sent successfully to {target_email}")
+        except Exception as smtp_ex:
+            smtp_error = str(smtp_ex)
+            print(f"[SMTP Error] Failed to send email via SMTP: {smtp_ex}")
+    else:
+        print("[SMTP] No SMTP credentials configured. Printing email draft instead:")
+        print(email_draft_en)
+        
     return {
         "status": "success",
         "complaint_reference": complaint_ref,
@@ -1127,7 +1504,9 @@ def submit_complaint(payload: ComplaintRequest):
         "portal_url": portal_link,
         "email_draft_en": email_draft_en,
         "email_draft_ur": email_draft_ur,
-        "message": f"Complaint successfully filed and pre-composed. Simulated email transmitted to {target_email} successfully."
+        "email_sent": email_sent,
+        "smtp_error": smtp_error,
+        "message": f"Complaint successfully filed and pre-composed. Email transmitted to {target_email} successfully." if email_sent else f"Complaint successfully filed and pre-composed. Simulated email logged."
     }
 
 @app.get("/api/drone/stress")
@@ -1154,10 +1533,47 @@ def get_drone_stress(lat: float = 30.1575, lon: float = 71.5249):
     }
 
 @app.get("/api/mandi/prices")
-def get_mandi_prices(search: str = ""):
+def get_mandi_prices(
+    search: str = "",
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
     """
     Returns live wholesale commodity indexes from major Pakistani Mandis.
+    If LLM key is available, generates dynamic rates; otherwise, filters static list.
     """
+    system_prompt = (
+        "You are a master commodity price analyst for Pakistani wholesale agriculture markets (Mandis). "
+        "Generate a list of 5 major commodities with realistic, current mandi prices, trends (+/- Rs or Stable), "
+        "which mandi they are in (e.g. Multan, Lahore, Faisalabad, Sargodha, Rahim Yar Khan), and source. "
+        "Commodities: Wheat (گندم), Cotton (کپاس), Rice Basmati (چاول), Maize (مکئی), Sugarcane (گنا). "
+        "Return the output as a JSON object containing a list of prices under 'wholesale_indices'. "
+        "Each item should have: 'item' (e.g. Wheat (گندم)), 'rate' (e.g. Rs. 4,180 - 4,240), "
+        "'trend' (e.g. + Rs. 40 or Stable or - Rs. 50), 'mandi' (e.g. Multan Mandi), and 'source' (e.g. Punjab Agri Dept). "
+        "Return ONLY raw JSON, do not use markdown wraps."
+    )
+    user_prompt = f"Generate mandi rates. Filter for query if present: '{search}'"
+    
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    api_response = None
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+        
+    if not api_response:
+        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+        if deepseek_key:
+            api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+            
+    if api_response:
+        try:
+            cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned_resp)
+            if "wholesale_indices" in parsed:
+                return parsed
+        except Exception as e:
+            print(f"Failed parsing LLM mandi prices JSON: {e}")
+            
+    # Fallback prices
     prices = [
         {"item": "Wheat (گندم)", "rate": "Rs. 4,180 - 4,240", "trend": "+ Rs. 40", "mandi": "Multan Mandi", "source": "Punjab Agri Dept"},
         {"item": "Cotton (کپاس)", "rate": "Rs. 8,400 - 8,650", "trend": "- Rs. 100", "mandi": "Lahore Mandi", "source": "Govt Gazette"},
@@ -1174,6 +1590,53 @@ def get_mandi_prices(search: str = ""):
         "status": "success",
         "last_updated": time.time(),
         "wholesale_indices": prices
+    }
+
+@app.get("/api/ai/news")
+def get_ai_news(
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
+    """
+    Returns AI-curated daily agricultural news feed tailored for Pakistani farmers.
+    """
+    system_prompt = (
+        "You are an agricultural news editor specializing in Pakistan farm news. "
+        "Create 3-5 realistic news headlines/items relevant to Pakistan agriculture (wheat procurement, water level, weather alerts, fertilizer prices, pesticide recommendations). "
+        "Return the output as a JSON object containing a list of news items under 'news_feed'. "
+        "Each news item must have: 'source' (e.g. Geo News Agri, Dawn, Jang), 'title_en' (English headline), "
+        "'title_ur' (Urdu headline), and 'time_ago' (e.g. 2 hours ago, 1 day ago). "
+        "Return ONLY raw JSON, do not use markdown wraps."
+    )
+    user_prompt = "Generate the news feed now."
+    
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    api_response = None
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+        
+    if not api_response:
+        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+        if deepseek_key:
+            api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+            
+    if api_response:
+        try:
+            cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned_resp)
+            if "news_feed" in parsed:
+                return parsed
+        except Exception as e:
+            print(f"Failed parsing LLM news JSON: {e}")
+            
+    # Fallback news items
+    return {
+        "status": "success",
+        "news_feed": [
+            {"source": "Geo News Agri", "title_en": "Punjab government sets official wheat procurement rate at Rs. 4,200.", "title_ur": "پنجاب حکومت کا گندم کی سرکاری قیمت خرید 4,200 مقرر کرنے کا فیصلہ۔", "time_ago": "2 hours ago"},
+            {"source": "Express News", "title_en": "Applications open for smart tubewell subsidies in Sindh.", "title_ur": "سندھ میں سمارٹ ٹیوب ویل سبسڈی کی درخواستیں جمع کرنے کا آغاز۔", "time_ago": "4 hours ago"},
+            {"source": "Dawn Agri", "title_en": "Locust control spray campaign intensified in South Punjab.", "title_ur": "ٹڈی دل کے حملوں سے بچاؤ کے لیے حفاظتی سپرے مہم تیز کرنے کا حکم۔", "time_ago": "1 day ago"}
+        ]
     }
 
 @app.get("/api/weather")
@@ -1219,6 +1682,252 @@ def get_weather(lat: float = 30.1575, lon: float = 71.5249):
         "source": "Local Agriculture Meteorology Core (OpenWeatherMap Fallback)",
         "forecast": forecast_list,
         "past_30_days_trends": past_30_days_temp
+    }
+
+class GeeRequest(BaseModel):
+    polygon_coords: List[Dict[str, float]]
+    crop_name: Optional[str] = "Wheat"
+
+@app.post("/api/ai/gee/ndvi")
+def get_gee_ndvi(
+    payload: GeeRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
+    """
+    Retrieves Google Earth Engine NDVI analysis report.
+    """
+    coords = payload.polygon_coords
+    crop = payload.crop_name or "Wheat"
+    
+    if not coords:
+        raise HTTPException(status_code=400, detail="Polygon coordinates are required")
+        
+    lats = [c["lat"] for c in coords]
+    lngs = [c["lng"] for c in coords]
+    center_lat = sum(lats) / len(lats)
+    center_lng = sum(lngs) / len(lngs)
+    
+    tile_url = ""
+    mode = "simulation"
+    ndvi_avg = 0.65
+    healthy_pct = 70.0
+    average_pct = 20.0
+    stressed_pct = 10.0
+    
+    if gee_ready:
+        try:
+            geom = ee.Geometry.Polygon([[[c['lng'], c['lat']] for c in coords]])
+            # Sentinel-2 surface reflectance
+            dataset = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
+                        .filterBounds(geom) \
+                        .filterDate('2023-01-01', '2025-01-01') \
+                        .sort('CLOUDY_PIXEL_PERCENTAGE') \
+                        .first()
+            
+            # Compute NDVI: (NIR - Red) / (NIR + Red) -> (B8 - B4) / (B8 + B4)
+            ndvi = dataset.normalizedDifference(['B8', 'B4']).rename('NDVI')
+            clipped_ndvi = ndvi.clip(geom)
+            
+            # MapId for TileProvider
+            vis_params = {
+                'min': 0.0,
+                'max': 1.0,
+                'palette': ['#d73027', '#fc8d59', '#fee08b', '#d9ef8b', '#91cf60', '#1a9850']
+            }
+            map_id_dict = ee.Image(clipped_ndvi).getMapId(vis_params)
+            tile_url = map_id_dict['tile_fetcher'].url_format
+            mode = "gee_live"
+        except Exception as e:
+            print(f"[GEE] NDVI error: {e}")
+            
+    if mode == "simulation":
+        seed_val = int((center_lat + center_lng) * 1000) % 100
+        ndvi_avg = round(0.58 + (seed_val % 20) * 0.01, 2)
+        stressed_pct = round(10.0 + (seed_val % 15), 1)
+        average_pct = round(20.0 + ((seed_val + 5) % 20), 1)
+        healthy_pct = round(100.0 - stressed_pct - average_pct, 1)
+
+    system_prompt = (
+        "You are an expert precision satellite remote sensing agronomist. "
+        "Explain the farmer's NDVI vegetation scan report. Keep the analysis concise, practical, "
+        "and focus on actionable recommendations (fertilizer, moisture check). "
+        "Output standard Urdu and English. Response must be extremely practical."
+    )
+    
+    user_prompt = f"""
+    Generate a bilingual NDVI satellite vegetation analysis report for a farm with:
+    Crop Name: {crop}
+    Calculated Average NDVI: {ndvi_avg} (Stressed: {stressed_pct}%, Average: {average_pct}%, Healthy: {healthy_pct}%)
+    Farm Coordinates Center: ({center_lat:.4f}, {center_lng:.4f})
+    
+    Format output as strict JSON:
+    {{
+      "report_en": "Provide English report here.",
+      "report_ur": "محنت کش بھائی! آپ کی فصل کا اوسط صحت انڈیکس (NDVI) 0.68 ہے۔ شمالی حصے میں فصل سرسبز اور شاداب ہے..."
+    }}
+    """
+    
+    report_en = ""
+    report_ur = ""
+    
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+    
+    api_response = None
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+    if not api_response and deepseek_key:
+        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+        
+    if api_response:
+        try:
+            cleaned = api_response.replace("```json", "").replace("```", "").strip()
+            data = json.loads(cleaned)
+            report_en = data.get("report_en", "")
+            report_ur = data.get("report_ur", "")
+        except Exception as e:
+            print(f"Failed parsing satellite analysis JSON: {e}")
+            
+    if not report_en:
+        report_en = f"Satellite analysis shows your {crop} crop is at {healthy_pct}% healthy vegetation density. The average NDVI of {ndvi_avg} indicates excellent growth. We recommend checking the southern portion which displays minor nitrogen/chlorophyll deficiency."
+        report_ur = f"سیٹلائٹ تجزیہ کے مطابق آپ کی {crop} کی فصل {healthy_pct} فیصد صحت مند نشوونما دکھا رہی ہے۔ اوسط NDVI انڈیکس {ndvi_avg} بہترین کارکردگی کا اشارہ ہے۔ ہم کھیت کے جنوبی کونے میں یوریا اور نائٹروجن کی مقدار بڑھانے کی سفارش کرتے ہیں۔"
+
+    return {
+        "status": "success",
+        "mode": mode,
+        "tile_url": tile_url,
+        "ndvi_average": ndvi_avg,
+        "distribution": {
+            "healthy_pct": healthy_pct,
+            "average_pct": average_pct,
+            "stressed_pct": stressed_pct
+        },
+        "report_en": report_en,
+        "report_ur": report_ur
+    }
+
+@app.post("/api/ai/gee/thermal")
+def get_gee_thermal(
+    payload: GeeRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_deepseek_api_key: Optional[str] = Header(None)
+):
+    """
+    Retrieves Google Earth Engine Thermal analysis report.
+    """
+    coords = payload.polygon_coords
+    crop = payload.crop_name or "Wheat"
+    
+    if not coords:
+        raise HTTPException(status_code=400, detail="Polygon coordinates are required")
+        
+    lats = [c["lat"] for c in coords]
+    lngs = [c["lng"] for c in coords]
+    center_lat = sum(lats) / len(lats)
+    center_lng = sum(lngs) / len(lngs)
+    
+    tile_url = ""
+    mode = "simulation"
+    temp_avg = 30.5
+    optimal_pct = 70.0
+    overwatered_pct = 10.0
+    stressed_pct = 20.0
+    
+    if gee_ready:
+        try:
+            geom = ee.Geometry.Polygon([[[c['lng'], c['lat']] for c in coords]])
+            # Landsat 8 Surface Temperature
+            dataset = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2') \
+                        .filterBounds(geom) \
+                        .filterDate('2023-01-01', '2025-01-01') \
+                        .sort('CLOUD_COVER') \
+                        .first()
+            
+            # ST_B10 is thermal band. Scale factor: 0.00341802 * DN + 149.0
+            # Then convert Kelvin to Celsius (-273.15)
+            thermal = dataset.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
+            clipped_thermal = thermal.clip(geom)
+            
+            vis_params = {
+                'min': 15.0,
+                'max': 45.0,
+                'palette': ['#040274', '#040281', '#0502a3', '#0502b8', '#0502ce', '#0502e6',
+                            '#0602ff', '#235cb1', '#307ef3', '#269db1', '#30c8e2', '#32d3ef',
+                            '#3be285', '#3ff38f', '#86e26f', '#3ae237', '#b5e22e', '#d6e21f',
+                            '#fff705', '#ffd611', '#ffb613', '#ff8b13', '#ff6e08', '#ff500d',
+                            '#ff0000', '#de0101', '#c21301', '#a71001', '#911003']
+            }
+            map_id_dict = ee.Image(clipped_thermal).getMapId(vis_params)
+            tile_url = map_id_dict['tile_fetcher'].url_format
+            mode = "gee_live"
+        except Exception as e:
+            print(f"[GEE] Thermal error: {e}")
+            
+    if mode == "simulation":
+        seed_val = int((center_lat + center_lng) * 1000) % 100
+        temp_avg = round(28.5 + (seed_val % 10) * 0.5, 1)
+        stressed_pct = round(12.0 + (seed_val % 18), 1)
+        overwatered_pct = round(8.0 + ((seed_val + 2) % 15), 1)
+        optimal_pct = round(100.0 - stressed_pct - overwatered_pct, 1)
+
+    system_prompt = (
+        "You are an expert satellite remote sensing moisture and crop temperature agronomist. "
+        "Explain the farmer's thermal moisture scan report. Keep the analysis concise, practical, "
+        "and focus on irrigation frequency advice. "
+        "Output standard Urdu and English. Response must be extremely practical."
+    )
+    
+    user_prompt = f"""
+    Generate a bilingual thermal satellite analysis report for a farm with:
+    Crop Name: {crop}
+    Average Temperature: {temp_avg}°C (Water Stressed: {stressed_pct}%, Optimal: {optimal_pct}%, Over-watered: {overwatered_pct}%)
+    Farm Coordinates Center: ({center_lat:.4f}, {center_lng:.4f})
+    
+    Format output as strict JSON:
+    {{
+      "report_en": "Provide English report here.",
+      "report_ur": "محنت کش بھائی! تھرمل اسکین کے مطابق اوسط درجہ حرارت 30.5 ڈگری ہے۔ کچھ حصوں میں پانی کی کمی دیکھی گئی ہے..."
+    }}
+    """
+    
+    report_en = ""
+    report_ur = ""
+    
+    gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+    
+    api_response = None
+    if gemini_key:
+        api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
+    if not api_response and deepseek_key:
+        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+        
+    if api_response:
+        try:
+            cleaned = api_response.replace("```json", "").replace("```", "").strip()
+            data = json.loads(cleaned)
+            report_en = data.get("report_en", "")
+            report_ur = data.get("report_ur", "")
+        except Exception as e:
+            print(f"Failed parsing satellite analysis JSON: {e}")
+            
+    if not report_en:
+        report_en = f"Thermal analysis shows an average canopy temperature of {temp_avg}°C. About {stressed_pct}% of the farm is water stressed. Immediate irrigation cycle is recommended for the warmer spots."
+        report_ur = f"تھرمل تجزیہ کے مطابق فصل کا اوسط درجہ حرارت {temp_avg} ڈگری ہے۔ کھیت کے {stressed_pct} فیصد حصے میں پانی کی کمی ظاہر ہو رہی ہے۔ ہم تجویز کرتے ہیں کہ گرم حصوں میں فوراً پانی لگائیں۔"
+
+    return {
+        "status": "success",
+        "mode": mode,
+        "tile_url": tile_url,
+        "thermal_average": temp_avg,
+        "distribution": {
+            "optimal_pct": optimal_pct,
+            "overwatered_pct": overwatered_pct,
+            "stressed_pct": stressed_pct
+        },
+        "report_en": report_en,
+        "report_ur": report_ur
     }
 
 if __name__ == "__main__":

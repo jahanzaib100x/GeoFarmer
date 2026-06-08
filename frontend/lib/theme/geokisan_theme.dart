@@ -3,13 +3,15 @@ import 'package:google_fonts/google_fonts.dart';
 
 class GeoKisanTheme {
   // Explicit HSL-derived Color Token Definitions
-  static const Color primaryGreen = Color(0xFF4A7C2F);   // geokisan-primary-green (Field Green)
-  static const Color aiGold = Color(0xFFC8860A);         // geokisan-ai-gold (Harvest Gold)
+  static const Color primaryGreen = Color(0xFF2D5A27);   // geokisan-primary-green (Deep forest green)
+  static const Color aiGold = Color(0xFFE8A020);         // geokisan-ai-gold (Warm wheat gold)
   static const Color waterBlue = Color(0xFF1A6B8A);       // geokisan-water-blue (Canal Blue)
-  static const Color alertClay = Color(0xFF8B4513);       // geokisan-alert-clay (Clay Earth)
-  static const Color bgDark = Color(0xFF1C2410);          // geokisan-bg-dark (Deep Soil)
-  static const Color surfaceCream = Color(0xFFFAF8F3);    // geokisan-surface-cream (Off-white Cream background)
-  static const Color lightText = Color(0xFF2F3E1E);       // High-contrast readable forest text
+  static const Color alertClay = Color(0xFFD64045);       // geokisan-alert-red (Alert red)
+  static const Color warningAmber = Color(0xFFF4A261);     // geokisan-warning-amber (Warning amber)
+  static const Color bgDark = Color(0xFF12160F);          // geokisan-bg-dark (Warm dark off-black)
+  static const Color bgDarkSurface = Color(0xFF1B3318);   // geokisan-bg-dark-surface (Dark forest green)
+  static const Color surfaceCream = Color(0xFFF5F2EC);    // geokisan-surface-cream (Off-white background)
+  static const Color lightText = Color(0xFF233B1E);       // High-contrast readable forest text
 
   // Configure Light Theme (Optimized for outdoor field use, reducing eye strain)
   static ThemeData get lightTheme {
@@ -60,7 +62,7 @@ class GeoKisanTheme {
         tertiary: aiGold,
         error: alertClay,
         background: bgDark,
-        surface: Color(0xFF2C381E),
+        surface: bgDarkSurface,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
         onBackground: surfaceCream,
@@ -72,7 +74,7 @@ class GeoKisanTheme {
         elevation: 2,
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFF2C381E),
+        color: bgDarkSurface,
         elevation: 3,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),

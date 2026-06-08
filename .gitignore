@@ -31,3 +31,8 @@ frontend/pubspec.lock
 # OS Files
 Thumbs.db
 Desktop.ini
+
+# Earth Engine Key & secrets
+backend/*.json
+backend/.env
+.env
