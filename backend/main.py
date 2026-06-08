@@ -1774,7 +1774,9 @@ def get_gee_ndvi(
     system_prompt = (
         "You are an expert precision satellite remote sensing agronomist. "
         "Explain the farmer's NDVI vegetation scan report. Keep the analysis concise, practical, "
-        "and focus on actionable recommendations (fertilizer, moisture check). "
+        "and focus on actionable recommendations. "
+        "IMPORTANT: If the average NDVI is very low (below 0.2), explicitly inform the user that the selected polygon appears to be barren land, roads, or building structures rather than a planted crop. "
+        "Also, if the Crop Name provided is just 'Wheat' but the data clearly indicates barren/urban land, ignore the crop name. "
         "Output standard Urdu and English. Response must be extremely practical."
     )
     
@@ -1921,6 +1923,8 @@ def get_gee_thermal(
         "You are an expert satellite remote sensing moisture and crop temperature agronomist. "
         "Explain the farmer's thermal moisture scan report. Keep the analysis concise, practical, "
         "and focus on irrigation frequency advice. "
+        "IMPORTANT: If the temperature is unusually high (e.g., above 38C) and uniform, or if the user scanned an urban area, explicitly mention that the polygon might be capturing a building roof, road, or barren land rather than a crop. "
+        "If the Crop Name is 'Wheat' but the temperature profile indicates urban infrastructure, state that clearly. "
         "Output standard Urdu and English. Response must be extremely practical."
     )
     
