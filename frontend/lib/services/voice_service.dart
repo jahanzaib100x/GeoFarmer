@@ -61,9 +61,9 @@ class VoiceService {
       'en': 'en-US',
       'ur': 'ur-PK',
       'pa': 'pa-PK',
-      'ps': 'ps-PK',
+      'ps': 'ps-AF',
       'sd': 'sd-PK',
-      'bal': 'bal-PK',
+      'bal': 'ur-PK',
       'sk': 'sk-PK',
     };
     return map[code] ?? 'en-US';

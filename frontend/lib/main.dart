@@ -1,4 +1,10 @@
 import 'screens/auth_screen.dart';
+import 'screens/interactive_map_selector.dart';
+import 'screens/navigate_tab_map.dart';
+import 'services/sensor_data_provider.dart';
+import 'services/agronomy_guide_data.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -21,14 +27,21 @@ import 'package:fl_chart/fl_chart.dart';
 // Global dynamic backend configuration with actual machine local IP defaults
 String globalBackendUrl = "https://geofarmer-backend.onrender.com";
 String globalGeminiApiKey = "";
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  tz.initializeTimeZones();
   try {
     final prefs = await SharedPreferences.getInstance();
     globalBackendUrl = prefs.getString('backend_url') ?? "https://geofarmer-backend.onrender.com";
     globalGeminiApiKey = prefs.getString('gemini_api_key') ?? "";
+    
+    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+    await flutterLocalNotificationsPlugin.initialize(settings: initializationSettings);
   } catch (e) {
-    print("Failed to initialize SharedPreferences: $e");
+    print("Failed to initialize SharedPreferences or Notifications: $e");
   }
   runApp(const GeoKisanApp());
 }
@@ -598,9 +611,9 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
         _onboardingLocation = prefs.getString('onboarding_location') ?? "Multan";
         _onboardingLocationController.text = _onboardingLocation;
         if (_hasCompletedOnboarding) {
-          _lands[0] = LandNode(
+          final node = LandNode(
             id: "L1",
-            nickname: "Plot A ($_onboardingLocation)",
+            nickname: _onboardingLocation.isNotEmpty ? _onboardingLocation : "My Farm",
             size: _onboardingLandSize,
             unit: _onboardingLandUnit,
             latitude: 30.1575,
@@ -609,11 +622,16 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                 ? "Registered crop: ${_onboardingSelectedCrops.join(', ')}"
                 : "Sandy clay wheat zone",
           );
+          if (_lands.isEmpty) {
+            _lands.add(node);
+          } else {
+            _lands[0] = node;
+          }
           if (_lands.isNotEmpty) {
-      _activeLand = _lands[0];
-    } else {
-      _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
-    }
+            _activeLand = _lands[0];
+          } else {
+            _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+          }
         }
       });
     } catch (e) {
@@ -698,13 +716,110 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
               icon: Icon(widget.isDarkMode ? Icons.wb_sunny : Icons.nightlight_round),
               tooltip: "Theme",
             ),
-            PopupMenuButton<String>(
+            IconButton(
               icon: const Icon(Icons.language, color: Colors.white),
-              onSelected: widget.onToggleLanguage != null ? (val) { if (val == 'en' && widget.isUrdu) widget.onToggleLanguage!(); if (val == 'ur' && !widget.isUrdu) widget.onToggleLanguage!(); } : null,
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'en', child: Text("English")),
-                const PopupMenuItem(value: 'ur', child: Text("اردو")),
-              ],
+              tooltip: "Change Language / زبان تبدیل کریں",
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: widget.isDarkMode ? GeoKisanTheme.bgDark : Colors.white,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  builder: (context) {
+                    final languages = [
+                      {"code": "en", "name": "English", "native": "English"},
+                      {"code": "ur", "name": "Urdu", "native": "اردو"},
+                      {"code": "pa", "name": "Punjabi", "native": "پنجابی"},
+                      {"code": "sd", "name": "Sindhi", "native": "سنڌي"},
+                      {"code": "ps", "name": "Pashto", "native": "پښتو"},
+                      {"code": "bal", "name": "Balochi", "native": "بلوچی"},
+                    ];
+
+                    return SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              widget.isUrdu ? "زبان تبدیل کریں" : "Select System Language",
+                              style: GeoKisanTheme.getHeaderStyle(
+                                isUrdu: widget.isUrdu,
+                                fontSize: 18,
+                                color: widget.isDarkMode ? Colors.white : GeoKisanTheme.primaryGreen,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.isUrdu
+                                  ? "علاقائی لہجے اور ترجمہ فوری طور پر لاگو ہوں گے"
+                                  : "Regional dialects and translation will update instantly",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: widget.isDarkMode ? Colors.white70 : Colors.grey[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            Flexible(
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: languages.length,
+                                itemBuilder: (context, index) {
+                                  final lang = languages[index];
+                                  final isSelected = widget.activeLanguage == lang["code"];
+                                  return Card(
+                                    color: isSelected
+                                        ? GeoKisanTheme.primaryGreen.withOpacity(0.12)
+                                        : (widget.isDarkMode ? Colors.grey[900] : Colors.grey[100]),
+                                    elevation: isSelected ? 2 : 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(
+                                        color: isSelected
+                                            ? GeoKisanTheme.primaryGreen
+                                            : Colors.transparent,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    child: ListTile(
+                                      title: Text(
+                                        lang["name"]!,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: widget.isDarkMode ? Colors.white : Colors.black87,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        lang["native"]!,
+                                        style: TextStyle(
+                                          color: widget.isDarkMode ? Colors.white70 : Colors.black54,
+                                        ),
+                                      ),
+                                      trailing: isSelected
+                                          ? const Icon(Icons.check_circle, color: GeoKisanTheme.primaryGreen)
+                                          : null,
+                                      onTap: () {
+                                        widget.onSetLanguage(lang["code"]!);
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
@@ -984,14 +1099,14 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   final FlutterTts _flutterTts = FlutterTts();
   
   Future<void> _speak(String text) async {
-    await _flutterTts.setLanguage(widget.isUrdu ? "ur-PK" : "en-US");
-    await _flutterTts.speak(text);
+    await _voiceService.speak(text, _localActiveLanguage);
   }
   final VoiceService _voiceService = VoiceService();
   int _farmTabToggleIndex = 0;
   int _aiHubToggleIndex = 0;
   double _bypassThreshold = 70.0;
   bool _isBypassEnabled = true;
+  bool _isChatbotListening = false;
   // Local controllers/variables
   late TextEditingController _cnicController;
   late TextEditingController _dobController;
@@ -1037,7 +1152,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   String _diagSeverity = "";
   String _diagRemedyEn = "";
   String _diagRemedyUr = "";
-  String _doctorCrop = "Wheat (Sona-21)";
+  String _doctorCrop = "Auto Detect";
   // Dynamic Add Crop Controllers
   final _cropNameController = TextEditingController();
   final _cropStageController = TextEditingController();
@@ -1047,6 +1162,18 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   final _ledgerDescController = TextEditingController();
   final _ledgerAmountController = TextEditingController();
   String _ledgerCategory = "Expense";
+  Map<String, dynamic>? _currentWeather;
+  Map<String, dynamic> _currentWeatherSummary = {};
+  bool _isWeatherLoading = false;
+  String _aiFarmInsight = "";
+  bool _isInsightLoading = false;
+  String _insightSummary = "";
+  String _insightUrgent = "";
+  String _insightPreventive = "";
+  String _insightSummaryUr = "";
+  String _insightUrgentUr = "";
+  String _insightPreventiveUr = "";
+
   // Alarms and alerts calendar schedules
   List<Map<String, String>> _calendarAlerts = [
     {"date": "2026-05-30", "time": "08:00 AM", "task": "Sprinkler cycle", "notes": "Wheat Sector"},
@@ -1065,6 +1192,8 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   List<dynamic> _weatherTrends30Days = [];
   // Mandi commodities pricing lists
   List<dynamic> _mandiPrices = [];
+  String _mandiPricesLastUpdated = "";
+  bool _isMandiLoading = false;
   String _mandiSearch = "";
   // Voice command simulation recording wave
   bool _isVoiceRecording = false;
@@ -1141,6 +1270,10 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             _diagRemedyUr = data["remediation_ur"];
             _diagBoxes = data["bounding_boxes"] ?? [];
           });
+          final speakText = widget.isUrdu 
+              ? "$_diagUrName. $_diagRemedyUr" 
+              : "$_diagClass. $_diagRemedyEn";
+          _speak(speakText);
           return;
         }
       } catch (e) {
@@ -1266,10 +1399,18 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         }
       }
     });
+    final speakText = widget.isUrdu 
+        ? "$_diagUrName. $_diagRemedyUr" 
+        : "$_diagClass. $_diagRemedyEn";
+    _speak(speakText);
   }
   // High-resolution Dynamic Feature Image Header wrapper (15+ Years UI/UX standard)
   Widget _buildModuleHeaderImage(String moduleId) {
     final Map<String, String> headerImages = {
+      'tab_monitor': "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=800&fit=crop",
+      'tab_ai_hub': "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=800&fit=crop",
+      'tab_monitor': "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=800&fit=crop",
+      'tab_ai_hub': "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=800&fit=crop",
       'm1': "https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&q=80&w=600",
       'm2': "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&q=80&w=600",
       'm3': "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=600",
@@ -1310,7 +1451,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           children: [
             buildPremiumNetworkImage(
               url,
-              height: 140,
+              height: (moduleId == 'tab_monitor' || moduleId == 'tab_ai_hub') ? 200 : 140,
               width: double.infinity,
               fallbackIcon: Icons.landscape,
             ),
@@ -1399,6 +1540,34 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       _fetchDroneStressData();
     }
   }
+  @override
+  void didUpdateWidget(covariant GeoKisanSubsystemPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.activeLanguage != oldWidget.activeLanguage) {
+      setState(() {
+        _localActiveLanguage = widget.activeLanguage;
+      });
+    }
+    if (widget.activeLand.id != oldWidget.activeLand.id) {
+      setState(() {
+        _localLands = List.from(widget.lands);
+        _localCrops = widget.landCrops[widget.activeLand.id] ?? [];
+        _localChatHistory = widget.landChats[widget.activeLand.id] ?? [];
+        _localLedgerHistory = widget.landLedgers[widget.activeLand.id] ?? [];
+        _soilRawADC = widget.landTelemetrySoil[widget.activeLand.id] ?? 520.0;
+        _fetchTelemetryData();
+        _fetchWeatherData();
+        _fetchMandiPrices();
+        if (widget.moduleId == 'm14') {
+          _fetchDroneStressData();
+        }
+      });
+    } else if (widget.lands != oldWidget.lands) {
+      setState(() {
+        _localLands = List.from(widget.lands);
+      });
+    }
+  }
   Future<void> _fetchTelemetryData() async {
     if (!widget.isOffline) {
       try {
@@ -1416,6 +1585,9 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             _frostAdviceEn = data["frost_advice"];
             _frostAdviceUr = data["frost_advice_ur"];
           });
+          double moisturePct = ((1023 - _soilRawADC) / 1023.0 * 100.0).clamp(0.0, 100.0);
+          SensorDataProvider().updateReadings(moisturePct, _ambientTemp, _ambientHumidity);
+          _fetchAiFarmInsight();
           return;
         }
       } catch (e) {
@@ -1444,6 +1616,9 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       _frostAdviceEn = "No immediate freezing threats flagged in atmospheric matrices.";
       _frostAdviceUr = "موجودہ ماحولیاتی نمی اور درجہ حرارت کے مطابق کورے (Frost) کا کوئی خطرہ نہیں ہے۔";
     });
+    double moisturePct = ((1023 - _soilRawADC) / 1023.0 * 100.0).clamp(0.0, 100.0);
+    SensorDataProvider().updateReadings(moisturePct, _ambientTemp, _ambientHumidity);
+    _fetchAiFarmInsight();
   }
   Future<void> _fetchWeatherData() async {
     if (!widget.isOffline) {
@@ -1456,6 +1631,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           setState(() {
             _weatherForecast = data["forecast"] ?? [];
             _weatherTrends30Days = data["past_30_days_trends"] ?? [];
+            _currentWeatherSummary = data["current_weather_summary"] ?? {};
           });
           return;
         }
@@ -1479,33 +1655,200 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         "temp": 32.0 + math.Random().nextDouble() * 4.0 - 2.0,
         "humidity": 50.0 + math.Random().nextDouble() * 20.0
       });
+      _currentWeatherSummary = {
+        "temperature_c": 31.5,
+        "humidity_pct": 52.0,
+        "rainfall_mm": 0.0,
+        "wind_kph": 11.0,
+        "uv_index": 6.0,
+        "condition": "Sunny"
+      };
     });
   }
+
+  IconData _getWeatherIcon(String condition) {
+    final cond = condition.toLowerCase();
+    if (cond.contains("sun") || cond.contains("clear")) {
+      return Icons.wb_sunny;
+    } else if (cond.contains("cloud") || cond.contains("overcast")) {
+      return Icons.cloud;
+    } else if (cond.contains("rain") || cond.contains("drizzle") || cond.contains("shower")) {
+      return Icons.umbrella;
+    } else if (cond.contains("thunder") || cond.contains("storm")) {
+      return Icons.thunderstorm;
+    } else if (cond.contains("snow") || cond.contains("freeze") || cond.contains("frost")) {
+      return Icons.ac_unit;
+    } else if (cond.contains("wind") || cond.contains("breeze")) {
+      return Icons.air;
+    }
+    return Icons.wb_cloudy;
+  }
+
+  Widget _buildWeatherMetricCell({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: GeoKisanTheme.primaryGreen.withOpacity(0.8), size: 22),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87),
+        ),
+      ],
+    );
+  }
+  Future<void> _fetchAiFarmInsight() async {
+    setState(() {
+      _isInsightLoading = true;
+      _insightSummary = "";
+      _insightUrgent = "";
+      _insightPreventive = "";
+      _insightSummaryUr = "";
+      _insightUrgentUr = "";
+      _insightPreventiveUr = "";
+    });
+
+    final soil = _soilRawADC.toInt();
+    final temp = _ambientTemp;
+    final hum = _ambientHumidity;
+    final cropListStr = _localCrops.map((c) => c.name).join(", ");
+    final weatherStr = _currentWeatherSummary.isNotEmpty
+        ? "Temp: ${_currentWeatherSummary['temperature_c']}C, Hum: ${_currentWeatherSummary['humidity_pct']}%, Rain: ${_currentWeatherSummary['rainfall_mm']}mm, Wind: ${_currentWeatherSummary['wind_kph']}kph, Condition: ${_currentWeatherSummary['condition']}"
+        : "Standard Multan Region weather";
+
+    try {
+      final prompt = """
+      Analyze the current farm status in Pakistan:
+      Crops planted: $cropListStr
+      Telemetry: Soil moisture raw value $soil ADC, Ambient Temperature ${temp}C, Ambient Humidity ${hum}%
+      Weather: $weatherStr
+      
+      Generate a concise AI Farm Insight. Output MUST be a strict JSON object (no markdown, no backticks, no comments) with the following fields:
+      insight_summary_en: (2-sentence condition summary in English)
+      insight_summary_ur: (2-sentence condition summary in Urdu)
+      urgent_action_en: (one urgent action in English)
+      urgent_action_ur: (one urgent action in Urdu)
+      preventive_rec_en: (one preventive recommendation in English)
+      preventive_rec_ur: (one preventive recommendation in Urdu)
+      """;
+
+      final response = await AIService.generateContent(prompt);
+      final cleaned = response.replaceFirst("```json", "").replaceFirst("```", "").trim();
+      final data = json.decode(cleaned);
+
+      setState(() {
+        _insightSummary = data["insight_summary_en"] ?? "";
+        _insightSummaryUr = data["insight_summary_ur"] ?? "";
+        _insightUrgent = data["urgent_action_en"] ?? "";
+        _insightUrgentUr = data["urgent_action_ur"] ?? "";
+        _insightPreventive = data["preventive_rec_en"] ?? "";
+        _insightPreventiveUr = data["preventive_rec_ur"] ?? "";
+        _isInsightLoading = false;
+      });
+
+      // Auto-read via TTS in selected language
+      final speakText = widget.isUrdu
+          ? "$_insightSummaryUr $_insightUrgentUr $_insightPreventiveUr"
+          : "$_insightSummary $_insightUrgent $_insightPreventive";
+      _speak(speakText);
+    } catch (e) {
+      print("Failed fetching AI insight: $e");
+      setState(() {
+        _isInsightLoading = false;
+        _insightSummary = "Soil moisture and weather conditions look normal.";
+        _insightSummaryUr = "مٹی کی نمی اور موسم کی صورتحال تسلی بخش ہے۔";
+        _insightUrgent = "Monitor moisture level closely.";
+        _insightUrgentUr = "نمی کی سطح پر گہری نظر رکھیں۔";
+        _insightPreventive = "Keep smart irrigation pump scheduled.";
+        _insightPreventiveUr = "سمارٹ آبپاشی پمپ کا شیڈول برقرار رکھیں۔";
+      });
+    }
+  }
   Future<void> _fetchMandiPrices() async {
-    if (!widget.isOffline) {
+    setState(() {
+      _isMandiLoading = true;
+    });
+    try {
+      final prompt = "Give today's average wholesale mandi prices in Pakistan in PKR per 40kg for Wheat, Basmati Rice, IRRI Rice, Cotton, Maize, Sugarcane, Tomato, Onion, Potato, Garlic, Chili. Return ONLY a JSON list of objects, each with fields: 'commodity' (string), 'price_pkr_per_maund' (number), 'unit' (string, e.g. '40kg' or 'maund'), 'trend' (string, one of 'up', 'down', 'stable'). Do not include any other text or markdown formatting outside the JSON.";
+      final response = await AIService.generateContent(prompt);
+      
+      String cleanJson = response.trim();
+      if (cleanJson.contains("```json")) {
+        cleanJson = cleanJson.substring(cleanJson.indexOf("```json") + 7);
+        cleanJson = cleanJson.substring(0, cleanJson.indexOf("```"));
+      } else if (cleanJson.contains("```")) {
+        cleanJson = cleanJson.substring(cleanJson.indexOf("```") + 3);
+        cleanJson = cleanJson.substring(0, cleanJson.indexOf("```"));
+      }
+      cleanJson = cleanJson.trim();
+
+      final List<dynamic> parsed = json.decode(cleanJson);
+      setState(() {
+        _mandiPrices = parsed;
+        _mandiPricesLastUpdated = DateTime.now().toString().substring(0, 16);
+        _isMandiLoading = false;
+      });
+    } catch (e) {
+      print("Failed fetching mandi prices via Gemini, trying DeepSeek: $e");
       try {
-        final response = await _makeHttpGet("${globalBackendUrl}/api/mandi/prices?search=$_mandiSearch");
-        if (response != null) {
-          final data = json.decode(response);
+        final res = await http.post(
+          Uri.parse("https://api.deepseek.com/chat/completions"),
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer sk-9665bba745484060b16bc579df18484d"
+          },
+          body: json.encode({
+            "model": "deepseek-chat",
+            "messages": [
+              {"role": "user", "content": "Give today's average wholesale mandi prices in Pakistan in PKR per 40kg for Wheat, Basmati Rice, IRRI Rice, Cotton, Maize, Sugarcane, Tomato, Onion, Potato, Garlic, Chili. Return ONLY a JSON list of objects, each with fields: 'commodity' (string), 'price_pkr_per_maund' (number), 'unit' (string), 'trend' (string, 'up', 'down', or 'stable')."}
+            ]
+          }),
+        );
+        if (res.statusCode == 200) {
+          final data = json.decode(res.body);
+          String cleanJson = data["choices"][0]["message"]["content"].trim();
+          if (cleanJson.contains("```json")) {
+            cleanJson = cleanJson.substring(cleanJson.indexOf("```json") + 7);
+            cleanJson = cleanJson.substring(0, cleanJson.indexOf("```"));
+          }
+          final List<dynamic> parsed = json.decode(cleanJson.trim());
           setState(() {
-            _mandiPrices = data["wholesale_indices"] ?? [];
+            _mandiPrices = parsed;
+            _mandiPricesLastUpdated = DateTime.now().toString().substring(0, 16);
+            _isMandiLoading = false;
           });
           return;
         }
-      } catch (e) {
-        print("Failed prices: $e");
+      } catch (deepseekErr) {
+        print("DeepSeek fallback failed: $deepseekErr");
       }
+      setState(() {
+        _mandiPrices = [
+          {"commodity": "Wheat", "price_pkr_per_maund": 4200, "unit": "40kg", "trend": "up"},
+          {"commodity": "Basmati Rice", "price_pkr_per_maund": 9200, "unit": "40kg", "trend": "stable"},
+          {"commodity": "IRRI Rice", "price_pkr_per_maund": 4100, "unit": "40kg", "trend": "down"},
+          {"commodity": "Cotton", "price_pkr_per_maund": 8500, "unit": "40kg", "trend": "up"},
+          {"commodity": "Maize", "price_pkr_per_maund": 2300, "unit": "40kg", "trend": "down"},
+          {"commodity": "Sugarcane", "price_pkr_per_maund": 420, "unit": "40kg", "trend": "stable"},
+          {"commodity": "Tomato", "price_pkr_per_maund": 1800, "unit": "40kg", "trend": "up"},
+          {"commodity": "Onion", "price_pkr_per_maund": 2200, "unit": "40kg", "trend": "down"},
+          {"commodity": "Potato", "price_pkr_per_maund": 1500, "unit": "40kg", "trend": "stable"},
+          {"commodity": "Garlic", "price_pkr_per_maund": 12000, "unit": "40kg", "trend": "up"},
+          {"commodity": "Chili", "price_pkr_per_maund": 15000, "unit": "40kg", "trend": "stable"},
+        ];
+        _mandiPricesLastUpdated = DateTime.now().toString().substring(0, 16) + " (Offline)";
+        _isMandiLoading = false;
+      });
     }
-    // High-fidelity fallback/offline Mandi prices
-    setState(() {
-      _mandiPrices = [
-        {"item": "Wheat (گندم)", "rate": "Rs. 4,180 - 4,240", "trend": "+ Rs. 40", "mandi": "Multan Mandi", "source": "Punjab Agri Dept"},
-        {"item": "Cotton (کپاس)", "rate": "Rs. 8,400 - 8,650", "trend": "- Rs. 100", "mandi": "Lahore Mandi", "source": "Govt Gazette"},
-        {"item": "Rice Basmati (چاول)", "rate": "Rs. 9,100 - 9,350", "trend": "Stable", "mandi": "Faisalabad Mandi", "source": "Agri Market Bureau"},
-        {"item": "Maize (مکئی)", "rate": "Rs. 2,200 - 2,350", "trend": "+ Rs. 15", "mandi": "Sahiwal Mandi", "source": "Punjab Agri"},
-        {"item": "Sugarcane (گنا)", "rate": "Rs. 400 - 450", "trend": "Stable", "mandi": "Rahim Yar Khan", "source": "Sindh Agri Bureau"}
-      ];
-    });
   }
   Future<void> _optimizeMandiRoute() async {
     setState(() {
@@ -1656,6 +1999,24 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           ),
         ),
         if (_webviewUrl != null) _buildMiniBrowserWebview(local),
+        if (widget.moduleId == 'tab_more')
+          Positioned(
+            bottom: 16,
+            right: activeUrdu ? null : 16,
+            left: activeUrdu ? 16 : null,
+            child: FloatingActionButton(
+              heroTag: "mandi_refresh_fab",
+              backgroundColor: GeoKisanTheme.primaryGreen,
+              onPressed: () => _fetchMandiPrices(),
+              child: _isMandiLoading 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh, color: Colors.white),
+            ),
+          ),
       ],
     );
 
@@ -1717,6 +2078,12 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       ),
     );
   }
+  void _onSensorDataChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Widget _renderSubsystemDetails(AppLocalization local) {
     switch (widget.moduleId) {
       case 'tab_farm':
@@ -1838,9 +2205,10 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                   leading: const Icon(Icons.landscape, color: GeoKisanTheme.primaryGreen),
                   title: Text(land.nickname, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(
-                    widget.isUrdu
+                    (widget.isUrdu
                       ? "پیمائش: ${land.size} ${land.unit} (${land.toAcres().toStringAsFixed(2)} ایکڑ / ${land.toHectares().toStringAsFixed(2)} ہیکٹر)"
-                      : "Size: ${land.size} ${land.unit} (~${land.toAcres().toStringAsFixed(2)} Acres / ${land.toHectares().toStringAsFixed(2)} Hectares)",
+                      : "Size: ${land.size} ${land.unit} (~${land.toAcres().toStringAsFixed(2)} Acres / ${land.toHectares().toStringAsFixed(2)} Hectares)") +
+                      (land.address.isNotEmpty ? "\n" + (widget.isUrdu ? "مقام" : "Location") + ": ${land.address}" : ""),
                     style: const TextStyle(fontSize: 12),
                   ),
                   trailing: Text(
@@ -1881,7 +2249,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                   ElevatedButton.icon(
                     onPressed: () => _showAddCropDialog(local),
                     icon: const Icon(Icons.add, size: 18),
-                    label: Text(widget.isUrdu ? "فصل شامل کریں" : "Add Crop"),
+                    label: Text(widget.isUrdu ? "شامل کریں" : "Add"),
                     style: ElevatedButton.styleFrom(backgroundColor: GeoKisanTheme.primaryGreen),
                   ),
                 ],
@@ -2011,28 +2379,37 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _buildActionSubmitButton(label: "Save Calendar Alarm Reminder", onPressed: () {
+                      _buildActionSubmitButton(label: "Save Calendar Alarm Reminder", onPressed: () async {
                         if (_alertTaskController.text.isNotEmpty) {
-                          setState(() {
-                            // Trigger local notification here
-                            FlutterLocalNotificationsPlugin().show(
-                              id: 0, 
-                              title: "GeoFarmer Alarm", 
-                              body: _alertTaskController.text, 
-                              notificationDetails: const NotificationDetails(
-                                android: AndroidNotificationDetails(
-                                  "channel_id", 
-                                  "channel_name", 
-                                  importance: Importance.max, 
-                                  priority: Priority.high
-                                )
+                          DateTime alertTime;
+                          try {
+                            alertTime = DateTime.parse("${_alertDateController.text} ${_alertTimeController.text}");
+                          } catch (_) {
+                            alertTime = DateTime.now().add(const Duration(seconds: 15));
+                          }
+                           final tzTime = tz.TZDateTime.from(alertTime, tz.local);
+                          await flutterLocalNotificationsPlugin.zonedSchedule(
+                            id: math.Random().nextInt(100000),
+                            title: "GeoFarmer Alert",
+                            body: _alertTaskController.text,
+                            scheduledDate: tzTime,
+                            notificationDetails: const NotificationDetails(
+                              android: AndroidNotificationDetails(
+                                "channel_id",
+                                "channel_name",
+                                importance: Importance.max,
+                                priority: Priority.high,
+                                playSound: true,
                               )
-                            );
+                            ),
+                            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                          );
+                          setState(() {
                             _calendarAlerts.add({
                               "date": _alertDateController.text,
                               "time": _alertTimeController.text,
                               "task": _alertTaskController.text,
-                              "notes": "Custom alarm trigger active"
+                              "notes": "Custom alarm scheduled"
                             });
                             _alertTaskController.clear();
                           });
@@ -2081,12 +2458,83 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                 child: Column(
                   children: [
                     
-            Row(
-              children: [
-                Expanded(child: Card(child: Padding(padding: EdgeInsets.all(8), child: Column(children: [Icon(Icons.water_drop, color: Colors.blue), Text("Soil Moisture"), Text("Not Connected", style: TextStyle(color: Colors.red, fontSize: 10))])))),
-                Expanded(child: Card(child: Padding(padding: EdgeInsets.all(8), child: Column(children: [Icon(Icons.thermostat, color: Colors.orange), Text("Temperature"), Text("Not Connected", style: TextStyle(color: Colors.red, fontSize: 10))])))),
-                Expanded(child: Card(child: Padding(padding: EdgeInsets.all(8), child: Column(children: [Icon(Icons.cloud, color: Colors.grey), Text("Humidity"), Text("Not Connected", style: TextStyle(color: Colors.red, fontSize: 10))])))),
-              ]
+            AnimatedBuilder(
+              animation: SensorDataProvider(),
+              builder: (context, child) {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.water_drop, color: Colors.blue),
+                              const Text("Soil Moisture"),
+                              Text(
+                                SensorDataProvider().soilMoisture != null
+                                    ? "${SensorDataProvider().soilMoisture!.toStringAsFixed(1)}%"
+                                    : (widget.isUrdu ? "سینسر آف لائن" : "Sensor offline"),
+                                style: TextStyle(
+                                  color: SensorDataProvider().soilMoisture != null ? GeoKisanTheme.primaryGreen : Colors.red,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.thermostat, color: Colors.orange),
+                              const Text("Temperature"),
+                              Text(
+                                SensorDataProvider().temperature != null
+                                    ? "${SensorDataProvider().temperature!.toStringAsFixed(1)}°C"
+                                    : (widget.isUrdu ? "سینسر آف لائن" : "Sensor offline"),
+                                style: TextStyle(
+                                  color: SensorDataProvider().temperature != null ? GeoKisanTheme.primaryGreen : Colors.red,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.cloud, color: Colors.grey),
+                              const Text("Humidity"),
+                              Text(
+                                SensorDataProvider().humidity != null
+                                    ? "${SensorDataProvider().humidity!.toStringAsFixed(1)}%"
+                                    : (widget.isUrdu ? "سینسر آف لائن" : "Sensor offline"),
+                                style: TextStyle(
+                                  color: SensorDataProvider().humidity != null ? GeoKisanTheme.primaryGreen : Colors.red,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
 
@@ -2244,10 +2692,91 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                           ? "آبِ رسی سمارٹ پمپ کامیابی سے شروع کر دیا گیا۔ سگنل فورسڈ۔"
                           : "Aab-e-Rasi simulated pump relay activated successfully. Pins forced safe.",
                     ),
-                    backgroundColor: GeoKisanTheme.primaryGreen,
                   ),
                 );
               },
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 4,
+              color: Colors.green[50],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          widget.isUrdu ? "فارم کی اے آئی رپورٹ (Insight)" : "AI Farm Insight & Status",
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+                        ),
+                        if (_isInsightLoading)
+                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        else
+                          IconButton(
+                            icon: const Icon(Icons.volume_up, color: GeoKisanTheme.primaryGreen),
+                            onPressed: () {
+                              final speakText = widget.isUrdu
+                                  ? "$_insightSummaryUr $_insightUrgentUr $_insightPreventiveUr"
+                                  : "$_insightSummary $_insightUrgent $_insightPreventive";
+                              _speak(speakText);
+                            },
+                          ),
+                      ],
+                    ),
+                    const Divider(),
+                    if (_isInsightLoading)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 20.0),
+                          child: Text(widget.isUrdu ? "اے آئی رپورٹ تیار ہو رہی ہے..." : "Generating AI Insight..."),
+                        ),
+                      )
+                    else ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.isUrdu ? _insightSummaryUr : _insightSummary,
+                        style: const TextStyle(fontSize: 13, height: 1.4, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning, color: Colors.orange, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.isUrdu ? "فوری اقدام:" : "Urgent Action:",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.orange),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.isUrdu ? _insightUrgentUr : _insightUrgent,
+                        style: const TextStyle(fontSize: 12, color: Colors.black87),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.shield, color: Colors.blue, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.isUrdu ? "حفاظتی تدبیر:" : "Preventive Recommendation:",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.isUrdu ? _insightPreventiveUr : _insightPreventive,
+                        style: const TextStyle(fontSize: 12, color: Colors.black87),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             // Smart Bypass Settings (m10)
@@ -2298,6 +2827,79 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               ),
             ),
             const SizedBox(height: 16),
+            if (_currentWeatherSummary.isNotEmpty) ...[
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                color: Colors.lightBlue[50],
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            widget.isUrdu ? "موجودہ موسم کی صورتحال" : "Current Weather Summary",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1B5E20)),
+                          ),
+                          Icon(
+                            _getWeatherIcon(_currentWeatherSummary["condition"] ?? "Sunny"),
+                            color: Colors.orange[700],
+                            size: 28,
+                          ),
+                        ],
+                      ),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildWeatherMetricCell(
+                            icon: Icons.thermostat,
+                            label: widget.isUrdu ? "درجہ حرارت" : "Temp",
+                            value: "${_currentWeatherSummary['temperature_c']}°C",
+                          ),
+                          _buildWeatherMetricCell(
+                            icon: Icons.water_drop,
+                            label: widget.isUrdu ? "ہوا میں نمی" : "Humidity",
+                            value: "${_currentWeatherSummary['humidity_pct']}%",
+                          ),
+                          _buildWeatherMetricCell(
+                            icon: Icons.umbrella,
+                            label: widget.isUrdu ? "بارش" : "Rainfall",
+                            value: "${_currentWeatherSummary['rainfall_mm']} mm",
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildWeatherMetricCell(
+                            icon: Icons.air,
+                            label: widget.isUrdu ? "ہوا کی رفتار" : "Wind",
+                            value: "${_currentWeatherSummary['wind_kph']} km/h",
+                          ),
+                          _buildWeatherMetricCell(
+                            icon: Icons.wb_sunny,
+                            label: widget.isUrdu ? "یو وی انڈیکس" : "UV Index",
+                            value: "${_currentWeatherSummary['uv_index']}",
+                          ),
+                          _buildWeatherMetricCell(
+                            icon: Icons.cloud,
+                            label: widget.isUrdu ? "حالت" : "Condition",
+                            value: "${_currentWeatherSummary['condition']}",
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             // Atmospheric weather (m11)
             Text(
               widget.isUrdu ? "7 دن کا موسمیاتی تبصرہ" : "7-Day Atmospheric Weather Outlook",
@@ -2459,7 +3061,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.grass, color: GeoKisanTheme.primaryGreen),
                 ),
-                items: ["Auto Detect", "Wheat", "Rice", "Cotton", "Sugarcane", "Mango", "Maize", "Potato", "Tomato", "Onion", "Citrus", "Guava", "Apple", "Banana", "Grapes", "Date Palm", "Chili", "Peas", "Chickpea", "Mustard", "Sunflower"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                items: ["Auto Detect", "Tomato", "Potato", "Cotton", "Rice", "Wheat", "Chili Pepper", "Brinjal (Eggplant)", "Cucumber", "Okra (Ladyfinger)", "Onion", "Garlic", "Citrus (Orange Lemon Kinnow)", "Mango", "Banana", "Grapes", "Apple", "Guava", "Peach", "Sugarcane", "Sunflower"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                 onChanged: (val) {
                   if (val != null) setState(() => _doctorCrop = val);
                 },
@@ -2512,17 +3114,17 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                     _buildPresetLeafCard(
                       title: widget.isUrdu ? "گندم کا کُنگ" : "Wheat Rust",
                       filename: "wheat_rust.jpg",
-                      imageUrl: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&q=80&w=150",
+                      imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Wheat_leaf_rust.jpg/640px-Wheat_leaf_rust.jpg",
                     ),
                     _buildPresetLeafCard(
                       title: widget.isUrdu ? "چاول کا جھلساؤ" : "Rice Blast",
                       filename: "rice_blast.jpg",
-                      imageUrl: "https://images.unsplash.com/photo-1530595467537-0b5996c41f2d?auto=format&fit=crop&q=80&w=150",
+                      imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Rice_blast_symptoms.jpg/640px-Rice_blast_symptoms.jpg",
                     ),
                     _buildPresetLeafCard(
                       title: widget.isUrdu ? "کپاس پتا مروڑ" : "Cotton Curl Virus",
                       filename: "cotton_curl.jpg",
-                      imageUrl: "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=150",
+                      imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Cotton_leaf_curl_virus.jpg/640px-Cotton_leaf_curl_virus.jpg",
                     ),
                   ],
                 ),
@@ -2596,7 +3198,22 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: isBot ? GeoKisanTheme.primaryGreen : GeoKisanTheme.aiGold),
                         ),
-                        child: Text(chat["text"]!, style: const TextStyle(fontSize: 13)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Flexible(
+                              child: Text(chat["text"]!, style: const TextStyle(fontSize: 13)),
+                            ),
+                            if (isBot) ...[
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => _speak(chat["text"]!),
+                                child: const Icon(Icons.volume_up, size: 16, color: GeoKisanTheme.primaryGreen),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -2611,7 +3228,44 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                       decoration: InputDecoration(hintText: widget.isUrdu ? "یہاں اردو، انگلش یا رومن اردو میں لکھیں..." : "Type here in Urdu or English...", border: const OutlineInputBorder()),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(
+                      _isChatbotListening ? Icons.mic : Icons.mic_none,
+                      color: _isChatbotListening ? Colors.red : GeoKisanTheme.primaryGreen,
+                    ),
+                    onPressed: () async {
+                      if (_isChatbotListening) {
+                        await VoiceService().stopListening();
+                        setState(() {
+                          _isChatbotListening = false;
+                        });
+                      } else {
+                        final available = await VoiceService().initStt();
+                        if (available) {
+                          setState(() {
+                            _isChatbotListening = true;
+                          });
+                          await VoiceService().startListening(
+                            languageCode: widget.isUrdu ? 'ur' : 'en',
+                            onResult: (text, isFinal) {
+                              setState(() {
+                                _chatController.text = text;
+                                if (isFinal) {
+                                  _isChatbotListening = false;
+                                }
+                              });
+                            },
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(widget.isUrdu ? "مائیکرو فون دستیاب نہیں ہے" : "Microphone not available")),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 4),
                   IconButton(onPressed: () => _sendAiChatMessage(), icon: const Icon(Icons.send, color: GeoKisanTheme.primaryGreen)),
                 ],
               ),
@@ -2620,97 +3274,12 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         );
 
       case 'm3': // Navigate Tab (Geospatial)
-        final textColor = widget.isDarkMode ? Colors.white : GeoKisanTheme.lightText;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.isUrdu ? "فارمز کا فضائی نقشہ (سیٹیلائٹ)" : "Farm Satellite Geospatial Workspace",
-              style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 15, color: GeoKisanTheme.primaryGreen),
-            ),
-            const SizedBox(height: 12),
-            _buildInteractiveMapSelector(local),
-            const SizedBox(height: 16),
-            Card(
-              elevation: 2,
-              color: GeoKisanTheme.surfaceCream,
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => FarmBoundaryDrawingScreen(
-                        isUrdu: widget.isUrdu,
-                        isDarkMode: widget.isDarkMode,
-                        activeLand: widget.activeLand,
-                        backendUrl: widget.backendUrl,
-                        isOffline: widget.isOffline,
-                        initialPoints: _drawnBoundaryPoints,
-                        onBoundarySaved: (points) {
-                          setState(() {
-                            _drawnBoundaryPoints = points;
-                          });
-                        },
-                      ),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.edit_road, color: GeoKisanTheme.primaryGreen, size: 28),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.isUrdu ? "پلاٹ کی حدود نقشے پر بنائیں" : "Draw Plot Boundary on Map",
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _drawnBoundaryPoints.isEmpty
-                                  ? (widget.isUrdu ? "کوئی حدود متعین نہیں ہے۔ حدود بنانے کے لیے یہاں ٹیپ کریں۔" : "No boundary drawn. Tap to set boundaries.")
-                                  : (widget.isUrdu ? "حدود متعین ہے: ${_drawnBoundaryPoints.length} پوائنٹس" : "Boundary active: ${_drawnBoundaryPoints.length} points"),
-                              style: const TextStyle(color: Colors.grey, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              widget.isUrdu ? "پلاٹس کے درمیان تبدیل کریں:" : "Switch Active Dashboard View:",
-              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
-            ),
-            const SizedBox(height: 8),
-            ..._localLands.map((l) => Card(
-              color: widget.activeLand.id == l.id ? GeoKisanTheme.primaryGreen.withOpacity(0.1) : null,
-              child: ListTile(
-                leading: const Icon(Icons.place, color: GeoKisanTheme.primaryGreen),
-                title: Text(l.nickname),
-                subtitle: Text("${l.size} ${l.unit} - Active Crop: Wheat"),
-                trailing: ElevatedButton(
-                  onPressed: () {
-                    if (widget.onSwitchLand != null) {
-                      widget.onSwitchLand!(l);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(widget.isUrdu ? "فعال پلاٹ تبدیل کر دیا گیا ہے" : "Active land updated successfully")),
-                      );
-                    }
-                  },
-                  child: Text(widget.isUrdu ? "منتخب کریں" : "Select"),
-                ),
-              ),
-            )).toList(),
-          ],
+        return NavigateTabMapWorkspace(
+          activeLandCoords: LatLng(widget.activeLand.latitude, widget.activeLand.longitude),
+          isUrdu: widget.isUrdu,
+          isDarkMode: widget.isDarkMode,
+          backendUrl: widget.backendUrl,
+          isOffline: widget.isOffline,
         );
 
       case 'tab_more':
@@ -2737,14 +3306,66 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               },
             ),
             const SizedBox(height: 12),
-            ..._mandiPrices.map((p) => Card(
-              child: ListTile(
-                leading: const Icon(Icons.trending_up, color: Colors.green),
-                title: Text(p["item"]!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("${p['mandi']} · Source: ${p['source']}"),
-                trailing: Text(p["rate"]!, style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen)),
+            if (_mandiPricesLastUpdated.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                widget.isUrdu 
+                    ? "آخری بار اپ ڈیٹ کیا گیا: $_mandiPricesLastUpdated" 
+                    : "Last Updated: $_mandiPricesLastUpdated",
+                style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
               ),
-            )).toList(),
+              const SizedBox(height: 8),
+            ],
+            if (_isMandiLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(color: GeoKisanTheme.primaryGreen),
+                ),
+              )
+            else
+              ..._mandiPrices.where((p) {
+                final String commodity = (p["commodity"] ?? (p["item"] ?? "")).toString().toLowerCase();
+                final String filter = _mandiSearch.toLowerCase();
+                return commodity.contains(filter);
+              }).map((p) {
+                final String commodity = p["commodity"] ?? (p["item"] ?? "");
+                final dynamic price = p["price_pkr_per_maund"] ?? p["rate"];
+                final String unit = p["unit"] ?? "40kg";
+                final String trend = (p["trend"] ?? "stable").toString().toLowerCase();
+
+                IconData trendIcon;
+                Color trendColor;
+                if (trend.contains("up")) {
+                  trendIcon = Icons.arrow_upward;
+                  trendColor = Colors.green;
+                } else if (trend.contains("down")) {
+                  trendIcon = Icons.arrow_downward;
+                  trendColor = Colors.red;
+                } else {
+                  trendIcon = Icons.trending_flat;
+                  trendColor = Colors.grey;
+                }
+
+                return Card(
+                  child: ListTile(
+                    leading: Icon(trendIcon, color: trendColor),
+                    title: Text(
+                      widget.isUrdu ? _translateCommodity(commodity.toString()) : commodity.toString(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      widget.isUrdu 
+                          ? "یونٹ: ${unit == '40kg' ? '40 کلوگرام' : unit}" 
+                          : "Unit: $unit",
+                    ),
+                    trailing: Text(
+                      "Rs. $price",
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen),
+                    ),
+                  ),
+                );
+              }).toList(),
             const Divider(height: 32),
 
             // Financial ledger manager (m18)
@@ -2829,72 +3450,33 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 14, color: GeoKisanTheme.primaryGreen),
             ),
             const SizedBox(height: 8),
-            Card(
+            ...agronomyGuideData.map((section) => Card(
               child: ExpansionTile(
-                leading: const Icon(Icons.grass, color: GeoKisanTheme.primaryGreen),
-                title: Text(widget.isUrdu ? "فصلوں کے سیزن (فصل کار)" : "Pakistan Crop Seasons Cycle"),
+                leading: const Icon(Icons.library_books, color: GeoKisanTheme.primaryGreen),
+                title: Text(widget.isUrdu ? section.titleUr : section.titleEn),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.volume_up, color: GeoKisanTheme.primaryGreen),
+                      onPressed: () {
+                        _speak(widget.isUrdu ? section.contentUr : section.contentEn);
+                      },
+                    ),
+                    const Icon(Icons.keyboard_arrow_down),
+                  ],
+                ),
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Text(
-                      widget.isUrdu
-                          ? "روازانہ کاشت کے لیے دو بنیادی سیزن ہیں:\n1۔ ربیع (سردیوں کی فصلیں): اکتوبر سے مارچ۔ اہم فصلیں: گندم، آلو، چنا۔\n2۔ خریف (گرمیوں کی فصلیں): اپریل سے ستمبر۔ اہم فصلیں: کپاس، چاول، گنا۔"
-                          : "Primary Seasons in Pakistan:\n1. Rabi (Winter crops): Sown Oct-Dec, harvested Apr-May. Main Crops: Wheat, Gram, Potato.\n2. Kharif (Summer crops): Sown Apr-Jun, harvested Oct-Dec. Main Crops: Cotton, Rice, Sugarcane.",
+                      widget.isUrdu ? section.contentUr : section.contentEn,
                       style: const TextStyle(fontSize: 12, height: 1.5),
                     ),
                   )
                 ],
               ),
-            ),
-            Card(
-              child: ExpansionTile(
-                leading: const Icon(Icons.bug_report, color: Colors.redAccent),
-                title: Text(widget.isUrdu ? "عام بیماریوں کی علامات اور علاج" : "Common Pests & Diagnostics Guide"),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Text(
-                      widget.isUrdu
-                          ? "1۔ گندم کا کُنگ (Wheat Rust): پتے پر پیلے یا سرخ دھبے۔ علاج: فنجی سائیڈ سپرے۔\n2۔ چاول کا جھلساؤ (Rice Blast): بیضوی بھورے دھبے۔ علاج: تانبے پر مبنی سپرے۔\n3۔ کپاس پتا مروڑ (Leaf Curl): پتے اوپر کی طرف مڑ جاتے ہیں۔ علاج: وائٹ فلائی کا خاتمہ۔"
-                          : "1. Wheat Rust: Powdery yellow/brown pustules on leaves. Cure: Fungicidal spray.\n2. Rice Blast: Diamond-shaped lesions on leaves. Cure: Copper-based fungicides.\n3. Cotton Leaf Curl: Leaves curl upwards. Cure: Control Whitefly vectors.",
-                      style: const TextStyle(fontSize: 12, height: 1.5),
-                    ),
-                  )
-                ],
-              ),
-            ),
-            Card(
-              child: ExpansionTile(
-                leading: const Icon(Icons.science, color: Colors.amber),
-                title: Text(widget.isUrdu ? "کھاد کی مقدار اور استعمال" : "Fertilizer Dosages & Optimization"),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Text(
-                      widget.isUrdu
-                          ? "گندم کے لیے فی ایکڑ کھاد کی ضرورت:\n- بوائی کے وقت: 1 بوری ڈی اے پی (DAP) اور نصف بوری یوریا۔\n- پہلے پانی پر: 1 بوری یوریا۔\n- دوسرے پانی پر: 1 بوری یوریا۔"
-                          : "Optimal Wheat Fertilizer schedule per acre:\n- At Sowing: 1 Bag DAP + 0.5 Bag Urea.\n- 1st Irrigation (21 days): 1 Bag Urea.\n- 2nd Irrigation (45 days): 1 Bag Urea.",
-                      style: const TextStyle(fontSize: 12, height: 1.5),
-                    ),
-                  )
-                ],
-              ),
-            ),
-            const Divider(height: 32),
-
-            // Regional dialects select (m27)
-            Text(
-              widget.isUrdu ? "سسٹم کی علاقائی زبان تبدیل کریں:" : "Choose Regional Dialect Locale instantly:",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildLanguageSelectorButton("English Mode", "en"),
-            _buildLanguageSelectorButton("اردو موڈ", "ur"),
-            _buildLanguageSelectorButton("پنجابی موڈ (Punjabi)", "pa"),
-            _buildLanguageSelectorButton("پښتو موڊ (Pashto)", "ps"),
-            _buildLanguageSelectorButton("سنڌي موڊ (Sindhi)", "sd"),
-            _buildLanguageSelectorButton("بلوچی موڊ (Balochi)", "bal"),
-            _buildLanguageSelectorButton("سرائیکی موڊ (Saraiki)", "sk"),
+            )).toList(),
           ],
         );
 
@@ -2923,22 +3505,21 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
     );
   }
-  Widget _buildLanguageSelectorButton(String label, String lang) {
-    bool isSel = _localActiveLanguage == lang;
-    return Card(
-      color: isSel ? GeoKisanTheme.primaryGreen.withOpacity(0.12) : null,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        trailing: isSel ? const Icon(Icons.check_circle, color: GeoKisanTheme.primaryGreen) : null,
-        onTap: () {
-          setState(() {
-            _localActiveLanguage = lang;
-          });
-          widget.onSetLanguage(lang);
-        },
-      ),
-    );
+  String _translateCommodity(String enName) {
+    final map = {
+      "Wheat": "گندم (Wheat)",
+      "Basmati Rice": "باسمیتی چاول (Basmati Rice)",
+      "IRRI Rice": "ایری چاول (IRRI Rice)",
+      "Cotton": "کپاس (Cotton)",
+      "Maize": "مکئی (Maize)",
+      "Sugarcane": "گنا (Sugarcane)",
+      "Tomato": "ٹماٹر (Tomato)",
+      "Onion": "پیاز (Onion)",
+      "Potato": "آلو (Potato)",
+      "Garlic": "لہسن (Garlic)",
+      "Chili": "مرچ (Chili)",
+    };
+    return map[enName] ?? enName;
   }
   // Multi-land creation widget wizard
   String _newLandName = "";
@@ -2947,6 +3528,17 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   String _newLandUnit = "Acres";
   double _newLandLat = 30.1575;
   double _newLandLon = 71.5249;
+  Widget _buildWeatherDetailItem(IconData icon, String value, String label) {
+    return Column(
+      children: [
+        Icon(icon, color: GeoKisanTheme.primaryGreen),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
+    );
+  }
+
   Widget _buildLandRegistrationWizard(AppLocalization local) {
     // Computes US standard metric conversions on the fly
     double convertedAcres = _newLandSize;
@@ -2967,7 +3559,10 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         ),
         const SizedBox(height: 8),
         TextField(
-          decoration: InputDecoration(labelText: widget.isUrdu ? "مقام / پتہ (Location / Address)" : "Location / Address"),
+          decoration: InputDecoration(
+            labelText: widget.isUrdu ? "مقام / پتہ" : "Location / Address",
+            hintText: widget.isUrdu ? "اپنے فارم کا مقام یا پتہ درج کریں" : "Type your farm location or address",
+          ),
           onChanged: (val) => _newLandAddress = val,
         ),
         const SizedBox(height: 8),
@@ -3014,7 +3609,17 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         const SizedBox(height: 4),
         Text(widget.isUrdu ? "نقشے پر لوکیشن منتخب کریں:" : "Choose Location on Interactive Map:", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        _buildInteractiveMapSelector(local),
+        InteractiveGoogleMapSelector(
+          initialLat: _newLandLat,
+          initialLng: _newLandLon,
+          isUrdu: widget.isUrdu,
+          onLocationSelected: (lat, lng) {
+            setState(() {
+              _newLandLat = lat;
+              _newLandLon = lng;
+            });
+          },
+        ),
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: () {
@@ -3026,7 +3631,8 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                 unit: _newLandUnit,
                 latitude: _newLandLat,
                 longitude: _newLandLon,
-                description: "Custom registered farm land"
+                description: "Custom registered farm land",
+                address: _newLandAddress,
               );
               setState(() {
                 _localLands.add(newLand);
@@ -3163,6 +3769,11 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   }
   // --- Dynamic Yield Prediction evaluator ---
   String _yieldCrop = "Wheat (Sona-21)";
+  // Yield forecast state variables
+  bool _isYieldLoading = false;
+  String _yieldExpected = "";
+  String _yieldSummary = "";
+  String _yieldRecommendations = "";
   String _yieldStage = "Milk Stage";
   double _yieldPredMaunds = 0.0;
   String _yieldRange = "";
@@ -3170,6 +3781,10 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   String _yieldRemedyEn = "";
   String _yieldRemedyUr = "";
   Widget _buildYieldEvaluatorModule(AppLocalization local) {
+    String? selectedCropValue = _yieldCrop;
+    if (!_localCrops.any((c) => c.name == selectedCropValue)) {
+      selectedCropValue = _localCrops.isNotEmpty ? _localCrops.first.name : null;
+    }
     return Card(
       color: GeoKisanTheme.surfaceCream,
       child: Padding(
@@ -3177,11 +3792,15 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         child: Column(
           children: [
             DropdownButtonFormField<String>(
-              value: _yieldCrop,
+              value: selectedCropValue,
               decoration: const InputDecoration(labelText: "Select Crop"),
-              items: ["Wheat (Sona-21)", "Cotton (BT-902)", "Rice (Basmati)", "Potato (Red-S)", "Tomato (Sahil)"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+              items: _localCrops.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
               onChanged: (val) {
-                if (val != null) setState(() => _yieldCrop = val);
+                if (val != null) {
+                  setState(() {
+                    _yieldCrop = val;
+                  });
+                }
               },
             ),
             const SizedBox(height: 8),
@@ -3195,26 +3814,53 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             ),
             const SizedBox(height: 12),
             _buildActionSubmitButton(label: "Calculate AI Precision Yield", onPressed: () => _calculateAiYieldForecast()),
-            if (_yieldPredMaunds > 0) ...[
+            if (_isYieldLoading)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(),
+              )
+            else if (_yieldExpected.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.isUrdu ? "متوقع حاصل پیداوار: $_yieldPredMaunds من" : "Estimated Harvest: $_yieldPredMaunds Maunds",
-                      style: TextStyle(color: GeoKisanTheme.primaryGreen, fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
-                    Text("Expected Range: $_yieldRange", style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    const Divider(),
-                    Text(widget.isUrdu ? _yieldSummaryUr : _yieldRemedyEn, style: const TextStyle(fontSize: 13, height: 1.4)),
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.isUrdu ? _yieldRemedyUr : _yieldRemedyEn,
-                      style: const TextStyle(fontSize: 13, height: 1.4, fontStyle: FontStyle.italic, color: GeoKisanTheme.aiGold),
-                    ),
-                  ],
+              Card(
+                color: Colors.green[50],
+                child: ListTile(
+                  title: Text(widget.isUrdu ? "متوقع پیداوار" : "Expected Yield", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(_yieldExpected, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen)),
+                ),
+              ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(widget.isUrdu ? "عوامل کا خلاصہ" : "Summary of Key Factors", style: const TextStyle(fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.volume_up, color: GeoKisanTheme.primaryGreen),
+                            onPressed: () => _speak("$_yieldSummary. $_yieldRecommendations"),
+                          )
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(_yieldSummary, style: const TextStyle(fontSize: 13, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.isUrdu ? "زرعی سفارشات" : "Agronomic Recommendations", style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text(_yieldRecommendations, style: const TextStyle(fontSize: 13, height: 1.4)),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -3549,16 +4195,18 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       _isChatLoading = true;
     });
     if (widget.isOffline) {
+      final offlineText = widget.isUrdu
+          ? "آف لائن سمارٹ ڈیٹا بیس: نمی کا تناسب مناسب ہے، مزید پانی کی ضرورت نہیں ہے۔"
+          : "Offline Cache response: Moisture parameters optimal. Bypassing runs.";
       Future.delayed(const Duration(milliseconds: 600), () {
         setState(() {
           _localChatHistory.add({
             "sender": "bot",
-            "text": widget.isUrdu
-              ? "آف لائن سمارٹ ڈیٹا بیس: نمی کا تناسب مناسب ہے، مزید پانی کی ضرورت نہیں ہے۔"
-              : "Offline Cache response: Moisture parameters optimal. Bypassing runs."
+            "text": offlineText
           });
           _isChatLoading = false;
         });
+        _speak(offlineText);
       });
       return;
     }
@@ -3569,9 +4217,11 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       );
       if (response != null) {
         final data = json.decode(response);
+        final String reply = data["reply"] ?? "";
         setState(() {
-          _localChatHistory.add({"sender": "bot", "text": data["reply"]});
+          _localChatHistory.add({"sender": "bot", "text": reply});
         });
+        _speak(reply);
       }
     } catch (e) {
       print("Chatbot API failed: $e");
@@ -3603,6 +4253,10 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             _diagRemedyUr = data["remediation_ur"];
             _diagBoxes = data["bounding_boxes"] ?? [];
           });
+          final speakText = widget.isUrdu 
+              ? "$_diagUrName. $_diagRemedyUr" 
+              : "$_diagClass. $_diagRemedyEn";
+          _speak(speakText);
           return;
         }
       } catch (e) {
@@ -3670,51 +4324,68 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         ];
       }
     });
+    final speakText = widget.isUrdu 
+        ? "$_diagUrName. $_diagRemedyUr" 
+        : "$_diagClass. $_diagRemedyEn";
+    _speak(speakText);
   }
   Future<void> _calculateAiYieldForecast() async {
-    if (!widget.isOffline) {
-      try {
-        final response = await _makeHttpPost(
-          "${globalBackendUrl}/api/ai/yield",
-          {
-            "crop_name": _yieldCrop,
-            "land_size": widget.activeLand.size, // double
-            "land_unit": widget.activeLand.unit, // string
-            "soil_moisture": _soilRawADC.toInt(), // int
-            "growth_stage": _yieldStage // string
-          }
-        );
-        if (response != null) {
-          final data = json.decode(response);
-          setState(() {
-            _yieldPredMaunds = data["predicted_yield_maunds"].toDouble();
-            _yieldRange = data["confidence_interval"];
-            _yieldSummaryUr = data["urdu_yield_summary"];
-            _yieldRemedyEn = data["ai_remediation_en"];
-            _yieldRemedyUr = data["ai_remediation_ur"] ?? "";
-          });
-          return;
+    setState(() {
+      _isYieldLoading = true;
+      _yieldExpected = "";
+      _yieldSummary = "";
+      _yieldRecommendations = "";
+    });
+
+    final cropName = _yieldCrop;
+    final size = widget.activeLand.size;
+    final unit = widget.activeLand.unit;
+    final soil = _soilRawADC.toInt();
+    final stage = _yieldStage;
+
+    try {
+      final prompt = "Estimate the harvest yield for crop '$cropName' on land area $size $unit with current soil moisture level $soil ADC at growth stage '$stage' in Pakistan. Provide: \n1. expected yield in kg/acre \n2. summary of key factors \n3. 3 agronomic recommendations. \n\nFormat your response EXACTLY like this so it is easily parsed: \n\nEXPECTED_YIELD: <expected yield here>\nSUMMARY: <summary of factors here>\nRECOMMENDATIONS: <3 recommendations here, each starting with a bullet point>";
+      final response = await AIService.generateContent(prompt);
+
+      String expected = "";
+      String summary = "";
+      String recs = "";
+
+      if (response.contains("SUMMARY:")) {
+        final parts = response.split("SUMMARY:");
+        expected = parts[0].replaceAll("EXPECTED_YIELD:", "").trim();
+        if (parts[1].contains("RECOMMENDATIONS:")) {
+          final subParts = parts[1].split("RECOMMENDATIONS:");
+          summary = subParts[0].trim();
+          recs = subParts[1].trim();
+        } else {
+          summary = parts[1].trim();
         }
-      } catch (e) {
-        print("Yield model failure: $e");
+      } else {
+        expected = "Expected yield: 1600 kg/acre";
+        summary = response;
+        recs = "1. Maintain balanced irrigation.\n2. Apply nitrogen fertilizer at booting stage.\n3. Weed early.";
       }
+
+      setState(() {
+        _yieldExpected = expected;
+        _yieldSummary = summary;
+        _yieldRecommendations = recs;
+        _isYieldLoading = false;
+      });
+
+      // Speak summary and recommendations
+      final textToSpeak = "$_yieldSummary. $_yieldRecommendations";
+      _speak(textToSpeak);
+    } catch (e) {
+      print("Failed yield forecast: $e");
+      setState(() {
+        _isYieldLoading = false;
+        _yieldExpected = "1200 - 1500 kg/acre (Fallback)";
+        _yieldSummary = "Dry soil conditions may reduce crop health.";
+        _yieldRecommendations = "1. Apply water immediately.\n2. Add potash fertilizer.\n3. Keep field weed-free.";
+      });
     }
-    // High-fidelity fallback/offline yield engine
-    setState(() {
-      _isSTTTranscribing = true;
-    });
-    await Future.delayed(const Duration(milliseconds: 1000));
-    final double size = widget.activeLand.size;
-    final double baseYield = _yieldCrop.contains("Wheat") ? 42.5 : 35.8;
-    final double computed = baseYield * size;
-    setState(() {
-      _yieldPredMaunds = double.parse(computed.toStringAsFixed(1));
-      _yieldRange = "${(computed * 0.9).toStringAsFixed(1)} - ${(computed * 1.1).toStringAsFixed(1)} Maunds total";
-      _yieldSummaryUr = "متوقع پیداوار: $_yieldPredMaunds من (${widget.activeLand.nickname})";
-      _yieldRemedyEn = "Keep soil moisture balanced. Monitor nitrogen levels carefully to optimize tillering head weights.";
-      _yieldRemedyUr = "اے آئی تجویز: نائٹروجن کی مقدار متوازن رکھیں اور پانی کی سطح مانیٹر کریں۔";
-      _isSTTTranscribing = false;
-    });
   }
   Future<void> _submitNegotiationBargain() async {
     final text = _negotiationTextController.text.trim();
@@ -4679,6 +5350,7 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
   String _geeReportEn = "";
   bool _isLoadingGee = false;
   GoogleMapController? _mapController;
+  String? _geeTileUrl;
   @override
   void initState() {
     super.initState();
@@ -4795,6 +5467,7 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
           setState(() {
             _geeReportUr = data["report_ur"] ?? "";
             _geeReportEn = data["report_en"] ?? "";
+            _geeTileUrl = data["tile_url"] ?? "";
             _isLoadingGee = false;
           });
           _triggerGridOverlay(type);
@@ -4807,6 +5480,7 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
     await Future.delayed(const Duration(seconds: 1));
     setState(() {
       _isLoadingGee = false;
+      _geeTileUrl = null;
       if (type == "ndvi") {
         _geeReportUr = "سیٹلائٹ تجزیہ (آف لائن): آپ کی گندم کی فصل 78 فیصد سرسبز ہے اور نشوونما بہترین ہے۔ جنوبی حصے میں معمولی کھاد کی ضرورت ہے۔";
         _geeReportEn = "Satellite analysis (Offline): Your wheat crop is at 78% healthy density. Minor nitrogen check recommended in the southern portion.";
@@ -4931,7 +5605,17 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
                             )
                           }
                         : {},
-                    circles: _buildGoogleMapCircles(),
+                    circles: (_geeTileUrl != null && _geeTileUrl!.isNotEmpty) 
+                        ? {} 
+                        : _buildGoogleMapCircles(),
+                    tileOverlays: (_geeTileUrl != null && _geeTileUrl!.isNotEmpty)
+                        ? {
+                            TileOverlay(
+                              tileOverlayId: const TileOverlayId("gee_ndvi_thermal_overlay"),
+                              tileProvider: NetworkTileProvider(urlTemplate: _geeTileUrl!),
+                            )
+                          }
+                        : {},
                     markers: _gpsPoints.asMap().entries.map((entry) {
                       int idx = entry.key;
                       LatLng latLng = entry.value;
@@ -5091,6 +5775,7 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
                           _analysisType = "none";
                           _geeReportUr = "";
                           _geeReportEn = "";
+                          _geeTileUrl = null;
                         });
                       },
                       icon: const Icon(Icons.clear, color: Colors.red),
