@@ -1,10 +1,6 @@
 import 'screens/auth_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:flutter_tts/flutter_tts.dart';
-import 'services/ai_service.dart';
 import 'theme/geokisan_theme.dart';
 import 'localization/app_localizations.dart';
 import 'dart:convert';
@@ -417,7 +413,6 @@ class LandNode {
   final double latitude;
   final double longitude;
   final String description;
-  String address;
   LandNode({
     required this.id,
     required this.nickname,
@@ -425,7 +420,7 @@ class LandNode {
     required this.unit,
     required this.latitude,
     required this.longitude,
-    required this.description, this.address = "",
+    required this.description,
   });
   double toAcres() {
     switch (unit) {
@@ -520,7 +515,11 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
   String _farmerDOB = "1988-06-15";
   bool _isOffline = false;
   // Lands database list
-  List<LandNode> _lands = [];
+  List<LandNode> _lands = [
+    LandNode(id: "L1", nickname: "Plot A (Shujabad Sector)", size: 12.0, unit: "Acres", latitude: 30.1575, longitude: 71.5249, description: "Sandy clay wheat zone"),
+    LandNode(id: "L2", nickname: "Plot B (North Gate)", size: 8.0, unit: "Kanals", latitude: 30.1620, longitude: 71.5310, description: "Fallow cotton prepare zone"),
+    LandNode(id: "L3", nickname: "Orchard East", size: 40.0, unit: "Marlas", latitude: 30.1530, longitude: 71.5190, description: "Mango orchard grid"),
+  ];
   late LandNode _activeLand;
   // Search filter
   String _searchQuery = "";
@@ -531,15 +530,6 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
   Map<String, double> _landTelemetrySoil = {};
   // Interactive controllers
   final ScrollController _dashboardScrollController = ScrollController();
-
-  final stt.SpeechToText _speechToText = stt.SpeechToText();
-  final FlutterTts _flutterTts = FlutterTts();
-  
-  Future<void> _speak(String text) async {
-    await _flutterTts.setLanguage(widget.isUrdu ? "ur-PK" : "en-US");
-    await _flutterTts.speak(text);
-  }
-
   // Dynamic Image carousel state variables
   int _carouselIndex = 0;
   final List<Map<String, String>> _carouselItems = [
@@ -554,7 +544,7 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
       "title_ur": "آبِ رسی سمارٹ پمپ فعال ہے"
     },
     {
-      "url": "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800",
+      "url": "https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&q=80&w=800",
       "title_en": "Real-time AI Pathology",
       "title_ur": "اے آئی فصلوں کا معائنہ"
     }
@@ -562,11 +552,7 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
   @override
   void initState() {
     super.initState();
-    if (_lands.isNotEmpty) {
-      _activeLand = _lands[0];
-    } else {
-      _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
-    }
+    _activeLand = _lands[0];
     _loadOnboardingPreferences();
     // Seed default structures per land
     for (var l in _lands) {
@@ -609,11 +595,7 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                 ? "Registered crop: ${_onboardingSelectedCrops.join(', ')}"
                 : "Sandy clay wheat zone",
           );
-          if (_lands.isNotEmpty) {
-      _activeLand = _lands[0];
-    } else {
-      _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
-    }
+          _activeLand = _lands[0];
         }
       });
     } catch (e) {
@@ -980,13 +962,6 @@ class GeoKisanSubsystemPage extends StatefulWidget {
   State<GeoKisanSubsystemPage> createState() => _GeoKisanSubsystemPageState();
 }
 class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
-  final stt.SpeechToText _speechToText = stt.SpeechToText();
-  final FlutterTts _flutterTts = FlutterTts();
-  
-  Future<void> _speak(String text) async {
-    await _flutterTts.setLanguage(widget.isUrdu ? "ur-PK" : "en-US");
-    await _flutterTts.speak(text);
-  }
   final VoiceService _voiceService = VoiceService();
   int _farmTabToggleIndex = 0;
   int _aiHubToggleIndex = 0;
@@ -2014,20 +1989,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                       _buildActionSubmitButton(label: "Save Calendar Alarm Reminder", onPressed: () {
                         if (_alertTaskController.text.isNotEmpty) {
                           setState(() {
-                            // Trigger local notification here
-                            FlutterLocalNotificationsPlugin().show(
-                              id: 0, 
-                              title: "GeoFarmer Alarm", 
-                              body: _alertTaskController.text, 
-                              notificationDetails: const NotificationDetails(
-                                android: AndroidNotificationDetails(
-                                  "channel_id", 
-                                  "channel_name", 
-                                  importance: Importance.max, 
-                                  priority: Priority.high
-                                )
-                              )
-                            );
                             _calendarAlerts.add({
                               "date": _alertDateController.text,
                               "time": _alertTimeController.text,
@@ -2080,16 +2041,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    
-            Row(
-              children: [
-                Expanded(child: Card(child: Padding(padding: EdgeInsets.all(8), child: Column(children: [Icon(Icons.water_drop, color: Colors.blue), Text("Soil Moisture"), Text("Not Connected", style: TextStyle(color: Colors.red, fontSize: 10))])))),
-                Expanded(child: Card(child: Padding(padding: EdgeInsets.all(8), child: Column(children: [Icon(Icons.thermostat, color: Colors.orange), Text("Temperature"), Text("Not Connected", style: TextStyle(color: Colors.red, fontSize: 10))])))),
-                Expanded(child: Card(child: Padding(padding: EdgeInsets.all(8), child: Column(children: [Icon(Icons.cloud, color: Colors.grey), Text("Humidity"), Text("Not Connected", style: TextStyle(color: Colors.red, fontSize: 10))])))),
-              ]
-            ),
-            const SizedBox(height: 16),
-
                     Text(
                       widget.isUrdu ? "پانی کا تخمینہ بہاؤ (سینسر نمی کی بنیاد پر)" : "Estimated Volumetric Flow (Calculated)",
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -2172,28 +2123,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                             ),
                           ),
                         ),
-                        
-                    const SizedBox(height: 16),
-                    Card(
-                      elevation: 2,
-                      color: GeoKisanTheme.primaryGreen.withOpacity(0.05),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(widget.isUrdu ? "اے آئی موسم اور آبپاشی کا خلاصہ" : "AI Weather & Irrigation Insight", style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen)),
-                                IconButton(icon: const Icon(Icons.volume_up, color: GeoKisanTheme.primaryGreen), onPressed: () => _speak(widget.isUrdu ? _waterSummaryUr : _waterSummaryEn)),
-                              ],
-                            ),
-                            Text(widget.isUrdu ? _waterSummaryUr : _waterSummaryEn, style: const TextStyle(fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                    ),
-
                         const Divider(height: 24),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -2459,7 +2388,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.grass, color: GeoKisanTheme.primaryGreen),
                 ),
-                items: ["Auto Detect", "Wheat", "Rice", "Cotton", "Sugarcane", "Mango", "Maize", "Potato", "Tomato", "Onion", "Citrus", "Guava", "Apple", "Banana", "Grapes", "Date Palm", "Chili", "Peas", "Chickpea", "Mustard", "Sunflower"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                items: ["Wheat (Sona-21)", "Cotton (BT-902)", "Rice (Basmati)", "Mango (Chaunsa)", "Sugarcane (Sartaj)"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                 onChanged: (val) {
                   if (val != null) setState(() => _doctorCrop = val);
                 },
@@ -2544,7 +2473,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                               _diagClass,
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen),
                             ),
-                            
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -2554,11 +2482,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                               ),
                               child: Text(_diagSeverity, style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 11)),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.volume_up, color: Colors.orange),
-                              onPressed: () => _speak(widget.isUrdu ? _diagRemedyUr : _diagRemedyEn),
-                            )
-
                           ],
                         ),
                         if (_diagUrName.isNotEmpty) ...[
@@ -2942,7 +2865,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   }
   // Multi-land creation widget wizard
   String _newLandName = "";
-  String _newLandAddress = "";
   double _newLandSize = 5.0;
   String _newLandUnit = "Acres";
   double _newLandLat = 30.1575;
@@ -2965,13 +2887,6 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           decoration: const InputDecoration(labelText: "Land Nickname (e.g. Plot C)"),
           onChanged: (val) => _newLandName = val,
         ),
-        const SizedBox(height: 8),
-        TextField(
-          decoration: InputDecoration(labelText: widget.isUrdu ? "مقام / پتہ (Location / Address)" : "Location / Address"),
-          onChanged: (val) => _newLandAddress = val,
-        ),
-        const SizedBox(height: 8),
-
         Row(
           children: [
             Expanded(
@@ -4855,24 +4770,8 @@ class _FarmBoundaryDrawingScreenState extends State<FarmBoundaryDrawingScreen> {
       appBar: AppBar(
         title: Text(widget.isUrdu ? "پلاٹ باؤنڈری ڈرائنگ" : "Plot Boundary Workspace"),
         backgroundColor: GeoKisanTheme.primaryGreen,
-        
         actions: [
-          PopupMenuButton<String>(
-            icon: Icon(Icons.language, color: Colors.white),
-            onSelected: (String result) {
-              // Update language logic here, maybe widget.onToggleLanguage()
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(value: 'en', child: Text('English')),
-              const PopupMenuItem<String>(value: 'ur', child: Text('اردو (Urdu)')),
-              const PopupMenuItem<String>(value: 'pa', child: Text('پنجابی (Punjabi)')),
-              const PopupMenuItem<String>(value: 'sd', child: Text('سنڌي (Sindhi)')),
-              const PopupMenuItem<String>(value: 'ps', child: Text('پښتو (Pashto)')),
-              const PopupMenuItem<String>(value: 'ba', child: Text('بلوچی (Balochi)')),
-            ],
-          ),
           IconButton(
-
             icon: Icon(_useGoogleMaps ? Icons.landscape : Icons.map),
             onPressed: () {
               setState(() {
