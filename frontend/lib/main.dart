@@ -2684,13 +2684,33 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             const SizedBox(height: 12),
             _buildActionSubmitButton(
               label: widget.isUrdu ? "دستی طور پر پمپ چلائیں" : "Execute Manual Water Pump Run",
-              onPressed: () {
+              onPressed: () async {
+                if (!widget.isOffline) {
+                  try {
+                    await _makeHttpPost("${globalBackendUrl}/api/pump?active=true", {});
+                  } catch (e) {
+                    print("Failed to start pump: $e");
+                  }
+                }
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       widget.isUrdu
                           ? "آبِ رسی سمارٹ پمپ کامیابی سے شروع کر دیا گیا۔ سگنل فورسڈ۔"
                           : "Aab-e-Rasi simulated pump relay activated successfully. Pins forced safe.",
+                    ),
+                    action: SnackBarAction(
+                      label: widget.isUrdu ? "بند کریں" : "STOP",
+                      textColor: Colors.redAccent,
+                      onPressed: () async {
+                        if (!widget.isOffline) {
+                          try {
+                            await _makeHttpPost("${globalBackendUrl}/api/pump?active=false", {});
+                          } catch (e) {
+                            print("Failed to stop pump: $e");
+                          }
+                        }
+                      },
                     ),
                   ),
                 );

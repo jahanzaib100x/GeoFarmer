@@ -192,6 +192,9 @@ latest_telemetry: Dict[str, Any] = {
     "timestamp": time.time()
 }
 
+# Thread-safe global state for irrigation water pump relay
+pump_active = False
+
 # In-memory history for local logs
 disease_history: List[Dict[str, Any]] = []
 
@@ -333,6 +336,23 @@ async def post_telemetry(
         "status": "success",
         "message": "Telemetry received and updated successfully"
     }
+
+@app.get("/api/pump")
+def get_pump_state():
+    """
+    Retrieves the current cloud-commanded state of the physical water pump.
+    """
+    return {"pump_active": pump_active}
+
+@app.post("/api/pump")
+def set_pump_state(active: bool):
+    """
+    Commands the physical water pump to turn ON (active=true) or OFF (active=false).
+    """
+    global pump_active
+    pump_active = active
+    print(f"[Pump] Command received. State updated to: {pump_active}")
+    return {"status": "success", "pump_active": pump_active}
 
 @app.get("/api/debug/gemini")
 def debug_gemini():
