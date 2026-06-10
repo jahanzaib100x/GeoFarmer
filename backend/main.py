@@ -52,7 +52,7 @@ try:
 except Exception as e:
     print(f"[GEE] Failed to initialize Earth Engine: {e}")
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Form, UploadFile, File, HTTPException, Header
+from fastapi import FastAPI, Form, UploadFile, File, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -284,21 +284,49 @@ class TelemetryResponse(BaseModel):
     frost_advice_ur: str
 
 @app.post("/api/telemetry", response_model=Dict[str, str])
-def post_telemetry(
-    temp: float = Form(...),
-    humidity: float = Form(...),
-    soil1: int = Form(...)
+async def post_telemetry(
+    request: Request,
+    temp: Optional[float] = Form(None),
+    humidity: Optional[float] = Form(None),
+    soil1: Optional[int] = Form(None)
 ):
     """
     Ingests atmospheric temperature, air humidity, and soil moisture values from external hardware nodes.
+    Supports both JSON payloads (application/json) and Form data (application/x-www-form-urlencoded).
     Saves state to a thread-safe global cache.
     """
     global latest_telemetry
+    t_val, h_val, s_val = None, None, None
+    
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            t_val = body.get("temp")
+            h_val = body.get("humidity")
+            s_val = body.get("soil1")
+        except Exception as e:
+            print(f"[Telemetry] JSON parse error: {e}")
+            
+    # Fallback to form parameters if not filled by JSON
+    if t_val is None:
+        t_val = temp
+    if h_val is None:
+        h_val = humidity
+    if s_val is None:
+        s_val = soil1
+        
+    if t_val is None or h_val is None or s_val is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing fields: temp, humidity, and soil1 are required either in JSON or Form payload"
+        )
+        
     with telemetry_lock:
         latest_telemetry = {
-            "temp": temp,
-            "humidity": humidity,
-            "soil1": soil1,
+            "temp": float(t_val),
+            "humidity": float(h_val),
+            "soil1": int(s_val),
             "timestamp": time.time()
         }
     return {
