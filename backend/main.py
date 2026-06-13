@@ -202,7 +202,7 @@ disease_history: List[Dict[str, Any]] = []
 firebase_initialized = False
 
 # Paid DeepSeek API key loaded from environment variables (fallback for local dev)
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-9665bba745484060b16bc579df18484d")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
 # Try to initialize Gemini Generative AI for multimodal vision diagnostics
 gemini_ready = False
@@ -224,7 +224,7 @@ def call_deepseek_api(system_prompt: str, user_prompt: str, api_key: Optional[st
     """
     Synchronous helper to execute prompt requests against the paid DeepSeek chat completion API.
     """
-    key_to_use = api_key or os.environ.get("DEEPSEEK_API_KEY", "sk-9665bba745484060b16bc579df18484d")
+    key_to_use = api_key or os.environ.get("DEEPSEEK_API_KEY")
     if not key_to_use:
         return ""
     import requests as http_req

@@ -8,12 +8,12 @@ class AIService {
 
   static Future<String> getGeminiKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('gemini_api_key') ?? 'AQ.Ab8RN6I9YcfHI61QiYYBowCizJg69sXm6PTeHXtLGaGUSTxO2g';
+    return prefs.getString('gemini_api_key') ?? '';
   }
 
   static Future<String> getDeepseekKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('deepseek_api_key') ?? 'sk-9665bba745484060b16bc579df18484d';
+    return prefs.getString('deepseek_api_key') ?? '';
   }
 
   static Future<String> generateContent(String prompt, {String systemPrompt = ''}) async {
