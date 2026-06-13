@@ -31,7 +31,19 @@
 
   <title>geokisan_geofarmer</title>
   <link rel="manifest" href="manifest.json">
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0"></script>
+  <script>
+    (function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const mapsKey = urlParams.get('maps_key') || localStorage.getItem('maps_api_key') || '';
+      if (mapsKey) {
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}`;
+        document.head.appendChild(script);
+      } else {
+        console.warn('Google Maps API Key not found in localStorage or URL parameters. Maps will not load on web.');
+      }
+    })();
+  </script>
 </head>
 <body>
   <!--
