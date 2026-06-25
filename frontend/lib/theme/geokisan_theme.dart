@@ -95,16 +95,8 @@ class GeoKisanTheme {
     required Color color,
   }) {
     if (isUrdu) {
-      // Native RTL rendering utilizing the Noto Nastaliq Urdu family
-      // Font scale minimum sits at 16sp
       double adjustedSize = fontSize < 16.0 ? 16.0 : fontSize;
-      return TextStyle(
-        fontFamily: 'Noto Nastaliq Urdu',
-        fontSize: adjustedSize,
-        fontWeight: fontWeight,
-        color: color,
-        height: 1.8, // Increased line height for legible Urdu script rendering
-      );
+      return getUrduStyle(fontSize: adjustedSize, color: color).copyWith(fontWeight: fontWeight);
     } else {
       // LTR English theme layout copy using DM Sans
       return GoogleFonts.dmSans(
@@ -131,5 +123,13 @@ class GeoKisanTheme {
         color: color,
       );
     }
+  }
+
+  static TextStyle getUrduStyle({double? fontSize, Color? color}) {
+    return GoogleFonts.notoNastaliqUrdu(
+      fontSize: fontSize ?? 16.0,
+      color: color,
+      height: 1.5,
+    );
   }
 }

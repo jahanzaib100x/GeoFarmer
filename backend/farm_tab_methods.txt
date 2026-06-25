@@ -1,0 +1,90 @@
+
+
+Widget _buildLandRegistrationWizard(AppLocalization local) {
+    // Computes US standard metric conversions on the fly
+    double convertedAcres = _newLandSize;
+    if (_newLandUnit == "Marlas") {
+      convertedAcres = _newLandSize * 0.00625;
+    } else if (_newLandUnit == "Kanals") {
+      convertedAcres = _newLandSize * 0.125;
+    } else if (_newLandUnit == "Murabbas") {
+      convertedAcres = _newLandSize * 25.0;
+    }
+    double convertedSqFt = convertedAcres * 43560.0;
+    double convertedHec = convertedAcres * 0.404686;
+    return Column(
+      children: [
+        TextField(
+          decoration: const InputDecoration(labelText: "Land Nickname (e.g. Plot C)"),
+          onChanged: (val) => _newLandName = val,
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                decoration: const InputDecoration(labelText: "Size"),
+                keyboardType: TextInputType.number,
+                onChanged: (val) {
+                  setState(() {
+                    _newLandSize = double.tryParse(val) ?? 0.0;
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            DropdownButton<String>(
+              value: _newLandUnit,
+              items: ["Marlas", "Kanals", "Acres", "Murabbas"].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _newLandUnit = val;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+        // Dynamic live international land conversions
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(8),
+          color: Colors.white70,
+          width: double.infinity,
+          child: Text(
+            "US / Int'l Conversions:\n~ ${convertedAcres.toStringAsFixed(3)} Acres\n~ ${convertedSqFt.toStringAsFixed(1)} Sq Ft\n~ ${convertedHec.toStringAsFixed(3)} Hectares",
+            style: const TextStyle(fontSize: 12, height: 1.4, color: Colors.blueGrey, fontWeight: FontWeight.bold),
+          ),
+        ),
+        // Map picker simulator widget integration
+        const SizedBox(height: 4),
+        Text(widget.isUrdu ? "نقشے پر لوکیشن منتخب کریں:" : "Choose Location on Interactive Map:", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        _buildInteractiveMapSelector(local),
+        const SizedBox(height: 10),
+        ElevatedButton(
+          onPressed: () {
+            if (_newLandName.isNotEmpty && _newLandSize > 0) {
+              final newLand = LandNode(
+                id: randomString(6),
+                nickname: _newLandName,
+                size: _newLandSize,
+                unit: _newLandUnit,
+                latitude: _newLandLat,
+                longitude: _newLandLon,
+                description: "Custom registered farm land"
+              );
+              setState(() {
+                _localLands.add(newLand);
+              });
+              widget.onUpdateLands(_localLands);
+            }
+          },
+          child: Text(widget.isUrdu ? "پلاٹ محفوظ کریں" : "Register Plot"),
+        ),
+      ],
+    );
+  }
+
+
+

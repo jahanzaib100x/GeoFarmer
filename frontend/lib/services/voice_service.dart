@@ -136,7 +136,7 @@ class VoiceService {
   String _mapToSttLocale(String code) {
     const map = {
       'en': 'en_US',
-      'ur': 'ur-PK',
+      'ur': 'ur_PK',
       'pa': 'pa_PK',
       'ps': 'ps_PK',
       'sd': 'sd_PK',

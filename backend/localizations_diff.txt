@@ -1,0 +1,265 @@
+diff --git a/frontend/lib/localization/app_localizations.dart b/frontend/lib/localization/app_localizations.dart
+index ca13e73..4c37686 100644
+--- a/frontend/lib/localization/app_localizations.dart
++++ b/frontend/lib/localization/app_localizations.dart
+@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
+ 
+ class AppLocalization {
+   final bool isUrdu;
+-  final String activeLanguage; // 'en', 'ur', 'ps', 'sd', 'bal', 'sk'
++  final String activeLanguage; // 'en', 'ur', 'ps', 'sd', 'bal', 'sk', 'pa'
+ 
+   AppLocalization(this.isUrdu, {this.activeLanguage = 'en'});
+ 
+-  // High-fidelity translations dictionary supporting all 30 subsystems across 6 languages
++  // High-fidelity translations dictionary supporting all 30 subsystems across 7 languages
+   static final Map<String, Map<String, String>> _localizedValues = {
+     'en': {
+       // App Shell
+@@ -19,16 +19,16 @@ class AppLocalization {
+       
+       // Group headings
+       'groupA': 'Identity & Structural Records',
+-      'groupB': 'Automated AI Advice Nodes',
++      'groupB': 'Crop Tips',
+       'groupC': 'Irrigation & Sensor Monitoring ("Aab-e-Rasi")',
+       'groupD': 'Atmospheric Environment Tracking',
+       'groupE': 'Geospatial Drone Analytics',
+       'groupF': 'Agricultural Schedulers & Procurement',
+       'groupG': 'Wholesale Commerce & Finance',
+-      'groupH': 'Civic Accountability & State Portals',
++      'groupH': 'Government Help',
+       'groupI': 'Community Data Sharing',
+-      'groupJ': 'System Localization & Offline Architecture',
+-
++      'groupJ': 'Settings & Language',
++      
+       // 30 Modules
+       'm1': 'Farmer Profile Setup',
+       'm2': 'Crop Dashboard Engine',
+@@ -38,12 +38,12 @@ class AppLocalization {
+       'm6': 'Yield Forecasting System',
+       'm7': 'Voice Negotiation Trainer',
+       'm8': 'Water Management Dashboard',
+-      'm9': 'Volumetric Flow Metering',
++      'm9': 'Water Usage',
+       'm10': 'Weather-Driven Bypass Controller',
+-      'm11': 'Live Weather Forecasting',
++      'm11': 'Weather',
+       'm12': 'Emergency Disaster Gateway',
+       'm13': 'Frost Prevention Monitor',
+-      'm14': 'Drone AI Vision Workspace',
++      'm14': 'Drone View',
+       'm15': 'Smart Crop Calendar System',
+       'm16': 'Supply Price Comparison Engine',
+       'm17': 'Mandi Price Tracking Matrix',
+@@ -86,15 +86,15 @@ class AppLocalization {
+ 
+       // Group headings
+       'groupA': 'شناخت اور فارم کے ریکارڈز',
+-      'groupB': 'خودکار مصنوعی ذہانت کے مشاورتی مرکز',
++      'groupB': 'فصلوں کے مشورے',
+       'groupC': 'آبِ رسی - آبپاشی اور سینسر مانیٹرنگ',
+       'groupD': 'ماحولیاتی اور موسمیاتی ٹریکنگ',
+       'groupE': 'ڈران کے ذریعے فضائی تجزیات',
+       'groupF': 'فصلوں کی شیڈولنگ اور خریداری',
+       'groupG': 'منڈی کی تجارت اور زراعت مالیات',
+-      'groupH': 'شہری احتساب اور حکومتی پورٹلز',
++      'groupH': 'سرکاری مدد',
+       'groupI': 'کمیونٹی ڈیٹا شیئرنگ',
+-      'groupJ': 'لوکلائزیشن اور آف لائن آرکیٹیکچر',
++      'groupJ': 'ترتیبات اور زبان',
+ 
+       // 30 Modules
+       'm1': 'کسان پروفائل ترتیب',
+@@ -105,12 +105,12 @@ class AppLocalization {
+       'm6': 'پیداواری صلاحیت کی پیش گوئی',
+       'm7': 'سودے بازی کی اے آئی کوچنگ (مذاکرات کوچ)',
+       'm8': 'آبپاشی مینجمنٹ ڈیش بورڈ',
+-      'm9': 'پانی کے بہاؤ کی پیمائش',
++      'm9': 'پانی کا استعمال',
+       'm10': 'موسم کی مناسبت سے بائی پاس کنٹرولر',
+-      'm11': 'مقامی موسم کی پیش گوئی',
++      'm11': 'موسم',
+       'm12': 'ہنگامی قدرتی آفات کا گیٹ وے',
+       'm13': 'کورا پڑنے سے بچاؤ کا مانیٹر',
+-      'm14': 'ڈرون اے آئی ویژن ورک اسپیس',
++      'm14': 'ڈرون ویو',
+       'm15': 'سمارٹ فصل کیلنڈر سسٹم',
+       'm16': 'کھاد و بیج قیمتوں کا موازنہ',
+       'm17': 'منڈی ریٹ لسٹ میٹرکس',
+@@ -154,15 +154,15 @@ class AppLocalization {
+       
+       // Groups (Pashto)
+       'groupA': 'پیژندنه او د ځمکې ریکارډونه',
+-      'groupB': 'د مصنوعی ذهنیت مشورتي مرکز',
++      'groupB': 'د فصل مشورې',
+       'groupC': 'آبِ رسی - اوبه خور او سینسر مانیټرنګ',
+       'groupD': 'موسمی او چاپیریال ټریکینګ',
+       'groupE': 'د ډرون فضائي تجزیات',
+       'groupF': 'د کرنې مهالویش او پیرود',
+       'groupG': 'د منډۍ تجارت او کرنیز مالیات',
+-      'groupH': 'د ولسي شکایتونو او دولتي پورټلونه',
++      'groupH': 'دولتي مرسته',
+       'groupI': 'د ټولنې خبرونه او بحثونه',
+-      'groupJ': 'ژبه او د آف لاین سیسټم',
++      'groupJ': 'ترتیبات او ژبه',
+ 
+       // Modules (Pashto)
+       'm1': 'د کسان پروفایل',
+@@ -173,12 +173,12 @@ class AppLocalization {
+       'm6': 'د پیداوار اټکل',
+       'm7': 'سوداګري اے آئی کوچ (مذاکرات)',
+       'm8': 'د اوبو لګولو ډیش بورډ',
+-      'm9': 'د اوبو بہاؤ اندازه',
++      'm9': 'د اوبو استعمال',
+       'm10': 'د موسم سمارټ بائی پاس',
+-      'm11': 'د موسم اټکل',
++      'm11': 'موسم',
+       'm12': 'د قدرتي آفتونو خبرتیا',
+       'm13': 'د یخ وهلو د مخنیوي مانیټر',
+-      'm14': 'د ډرون اے آئی نقشه',
++      'm14': 'ډرون ویو',
+       'm15': 'د فصل سمارټ تقویم',
+       'm16': 'د سرې او تخم نرخ موازنه',
+       'm17': 'د منډۍ نرخ لست',
+@@ -208,15 +208,15 @@ class AppLocalization {
+       
+       // Groups (Sindhi)
+       'groupA': 'سڃاڻپ ۽ زرعي ريڪارڊ',
+-      'groupB': 'مصنوعي ذهانت صلاحڪار مرڪز',
++      'groupB': 'فصلن جا مشورا',
+       'groupC': 'آبِ رسي - آبپاشي ۽ سينسر مانيٽرنگ',
+       'groupD': 'موسمياتي ۽ ماحولياتي ٽريڪنگ',
+       'groupE': 'ڊرون فضائي تجزيو',
+       'groupF': 'فصلن جو شيڊول ۽ خريداري',
+       'groupG': 'منڊي واپار ۽ زرعي ماليات',
+-      'groupH': 'عوامي شڪايتون ۽ سرڪاري پورٽل',
++      'groupH': 'سرڪاري مدد',
+       'groupI': 'برادري بحث ۽ خبرون',
+-      'groupJ': 'ٻوليون ۽ آف لائن سسٽم',
++      'groupJ': 'ترتيبون ۽ ٻولي',
+ 
+       // Modules (Sindhi)
+       'm1': 'هاري پروفائل سيٽ اپ',
+@@ -227,12 +227,12 @@ class AppLocalization {
+       'm6': 'پيداوار جي اڳڪٿي',
+       'm7': 'واپار اي آئي ڪوچ (ڳالهه ٻولهه)',
+       'm8': 'آبپاشي مئنيجمينٽ ڊيش بورڊ',
+-      'm9': 'پاڻي جي وهڪري جي ماپ',
++      'm9': 'پاڻي جو استعمال',
+       'm10': 'موسمياتي بائي پاس ڪنٽرولر',
+-      'm11': 'مقامي موسم جي اڳڪٿي',
++      'm11': 'موسم',
+       'm12': 'هنگامي قدرتي آفتن جو گيٽ وي',
+       'm13': 'ڪوري کان بچاءُ جو مانيٽر',
+-      'm14': 'ڊرون اي آئي نقشو',
++      'm14': 'ڊرون ويو',
+       'm15': 'فصلن جو سمارٽ ڪئلينڊر',
+       'm16': 'ڀاڻ ۽ ٻج جي قيمتن جو موازنو',
+       'm17': 'منڊي جي قيمتن جي لسٽ',
+@@ -262,15 +262,15 @@ class AppLocalization {
+       
+       // Groups (Balochi)
+       'groupA': 'پجار ء ڈگارِ ریکارڈ',
+-      'groupB': 'اے آئی سر سوجِء بنجاہ',
++      'groupB': 'فصلانی سوج',
+       'groupC': 'آپِ رسی - آپ بند ء مانیٹرنگ',
+       'groupD': 'موسم ء ماحولیاتِ ٹریکنگ',
+       'groupE': 'ڈرونء بالی تجزئیہ',
+       'groupF': 'فصلءِ شیڈول ء بہاء',
+       'groupG': 'منڈئیءِ بیوپار ء مالیات',
+-      'groupH': 'شکایت ء دولتی پورٹل',
++      'groupH': 'دولتی کمک',
+       'groupI': 'دیوان ء نوکیں احوال',
+-      'groupJ': 'زبان ء آف لائن سسٹم',
++      'groupJ': 'ترتیبات ء زبان',
+ 
+       // Modules (Balochi)
+       'm1': 'کسان پروفائل سیٹ اپ',
+@@ -281,12 +281,12 @@ class AppLocalization {
+       'm6': 'پیداوارءِ اندازہ',
+       'm7': 'اے آئی بیوپار کوچ (سودا)',
+       'm8': 'آپ بندءِ ڈیش بورڈ',
+-      'm9': 'آپءِ کشگءِ اندازہ',
++      'm9': 'آپءِ کارمرز',
+       'm10': 'موسمءِ سمارٹ بائی پاس',
+-      'm11': 'موسمءِ پیشگوئی',
++      'm11': 'موسم',
+       'm12': 'قدرتی آفتءِ معلوماتی گیٹ وے',
+       'm13': 'بفرءِ رکگی مانیٹر',
+-      'm14': 'ڈرون اے آئی نقشه',
++      'm14': 'ڈرون ویو',
+       'm15': 'فصلءِ سمارٹ کیلنڈر',
+       'm16': 'سیمی ء تخمءِ نرخِ موازنه',
+       'm17': 'منڈئیءِ نرخ نامہ',
+@@ -316,15 +316,15 @@ class AppLocalization {
+       
+       // Groups (Saraiki)
+       'groupA': 'پچھاݨ تے ڈگار ریکارڈ',
+-      'groupB': 'اے آئی سر سوج سینٹر',
++      'groupB': 'فصلیں دے مشورے',
+       'groupC': 'آبِ رسی - سمارٹ آبپاشی سسٹمز',
+       'groupD': 'موسم تے ماحول ٹریکنگ',
+       'groupE': 'ڈرون فضائی تجزیات',
+       'groupF': 'فصل شیڈولنگ تے خریداری',
+       'groupG': 'منڈی بیوپار تے زرعی حساب کتاب',
+-      'groupH': 'سرکاری شکایات تے کسان پورٹل',
++      'groupH': 'سرکاری مدد',
+       'groupI': 'کمیونٹی ڈسکشن تے خبراں',
+-      'groupJ': 'زباناں تے آف لائن سسٹم',
++      'groupJ': 'ترتیبات تے زبان',
+ 
+       // Modules (Saraiki)
+       'm1': 'کسان پروفائل ترتیب',
+@@ -335,12 +335,12 @@ class AppLocalization {
+       'm6': 'پیداوار دا اندازہ',
+       'm7': 'سودے بازی اے آئی کوچ',
+       'm8': 'آبپاشی ڈیش بورڈ',
+-      'm9': 'پاݨی دے وہاؤ دی پیمائش',
++      'm9': 'پاݨی دا استعمال',
+       'm10': 'موسمی بائی پاس سمارٹ کنٹرولر',
+-      'm11': 'مقامی موسم دی پیشگوئی',
++      'm11': 'موسم',
+       'm12': 'ہنگامی آفات دا گیٹ وے',
+       'm13': 'کورے کنوں بچاؤ دا مانیٹر',
+-      'm14': 'ڈرون اے آئی ویژن نقشه',
++      'm14': 'ڈرون ویو',
+       'm15': 'فصلیں دا سمارٹ کیلنڈر',
+       'm16': 'کھاد تے بیج دی قیمت دا موازنہ',
+       'm17': 'منڈی ریٹ لسٹ میٹرکس',
+@@ -366,15 +366,15 @@ class AppLocalization {
+       'offlineWarning': 'انٹرنیٹ رابطہ منقطع اے۔ لوکل ڈیٹا دکھایا جا رہا اے۔',
+       'syncSuccess': 'لوکل ڈیٹا بیس سرور نال کامیابی نال ہم آہنگ ہو گیا اے۔',
+       'groupA': 'پچھان تے زرعی ریکارڈز',
+-      'groupB': 'اے آئی سر سوج سینٹر',
++      'groupB': 'فصلیں دے مشورے',
+       'groupC': 'آبِ رسی - سمارٹ آبپاشی سسٹمز',
+       'groupD': 'موسم تے ماحولیاتی ٹریکنگ',
+       'groupE': 'ڈرون فضائی تجزیات',
+       'groupF': 'فصلوں دی شیڈولنگ تے خریداری',
+       'groupG': 'منڈی بیوپار تے زرعی مالیات',
+-      'groupH': 'سرکاری شکایات تے کسان پورٹل',
++      'groupH': 'سرکاری مدد',
+       'groupI': 'کمیونٹی ڈسکشن تے خبراں',
+-      'groupJ': 'زباناں تے آف لائن نظام',
++      'groupJ': 'ترتیبات تے زبان',
+       'm1': 'کسان پروفائل ترتیب',
+       'm2': 'فصلیں دا ڈیش بورڈ انجن',
+       'm3': 'ملٹی فارم مینیجر',
+@@ -383,12 +383,12 @@ class AppLocalization {
+       'm6': 'پیداوار دا اندازہ',
+       'm7': 'سودے بازی اے آئی کوچ',
+       'm8': 'آبپاشی ڈیش بورڈ',
+-      'm9': 'پاݨی دے وہاؤ دی پیمائش',
++      'm9': 'پاݨی دا استعمال',
+       'm10': 'موسمیاتی بائی پاس کنٹرولر',
+-      'm11': 'مقامی موسم دی پیشگوئی',
++      'm11': 'موسم',
+       'm12': 'ہنگامی قدرتی آفات دا گیٹ وے',
+       'm13': 'کورے کنوں بچاؤ دا مانیٹر',
+-      'm14': 'ڈرون اے آئی ویژن نقشه',
++      'm14': 'ڈرون ویو',
+       'm15': 'فصلیں دا سمارٹ کیلنڈر',
+       'm16': 'کھاد تے بیج دی قیمت دا موازنہ',
+       'm17': 'منڈی ریٹ لسٹ میٹرکس',

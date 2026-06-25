@@ -1,0 +1,1017 @@
+Widget _renderSubsystemDetails(AppLocalization local) {
+    switch (widget.moduleId) {
+      case 'tab_farm':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Segmented choice chips
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: Center(
+                      child: Text(
+                        widget.isUrdu ? "فارم پروفائل" : "My Farm Profile",
+                        style: TextStyle(
+                          color: _farmTabToggleIndex == 0 ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    selected: _farmTabToggleIndex == 0,
+                    selectedColor: GeoKisanTheme.primaryGreen,
+                    onSelected: (val) {
+                      if (val) setState(() => _farmTabToggleIndex = 0);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ChoiceChip(
+                    label: Center(
+                      child: Text(
+                        widget.isUrdu ? "فصل پلانر" : "Crop Planner",
+                        style: TextStyle(
+                          color: _farmTabToggleIndex == 1 ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    selected: _farmTabToggleIndex == 1,
+                    selectedColor: GeoKisanTheme.primaryGreen,
+                    onSelected: (val) {
+                      if (val) setState(() => _farmTabToggleIndex = 1);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_farmTabToggleIndex == 0) ...[
+              // FARMER PROFILE & PLOTS
+              Card(
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.isUrdu ? "کسان کی شناختی معلومات" : "Farmer Profile Credentials",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildInputField(label: widget.isUrdu ? "قومی شناختی کارڈ نمبر (CNIC)" : "National CNIC Number", controller: _cnicController, hint: "e.g., 36302-1234567-8"),
+                      const SizedBox(height: 12),
+                      _buildInputField(label: widget.isUrdu ? "تاریخ پیدائش (DOB)" : "Date of Birth (YYYY-MM-DD)", controller: _dobController, hint: "e.g., 1988-06-15"),
+                      const SizedBox(height: 16),
+                      _buildActionSubmitButton(label: local.translate('save'), onPressed: () {
+                        final cnicClean = _cnicController.text.replaceAll('-', '').trim();
+                        if (cnicClean.length != 13) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(widget.isUrdu
+                                ? "شناختی کارڈ نمبر درست نہیں ہے! شناختی کارڈ 13 ہندسوں پر مشتمل ہونا چاہیے۔"
+                                : "Error: CNIC must be exactly 13 digits long (e.g. 36302-1234567-8)."),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        final dobVal = _dobController.text.trim();
+                        final dobClean = dobVal.replaceAll('-', '');
+                        if (dobClean.length != 8 || dobVal.length != 10 || dobVal[4] != '-' || dobVal[7] != '-') {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(widget.isUrdu
+                                ? "تاریخِ پیدائش کا فارمیٹ درست نہیں ہے! درست فارمیٹ: YYYY-MM-DD"
+                                : "Error: Date of Birth must be in YYYY-MM-DD format (e.g. 1988-06-15)."),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        widget.onUpdateProfile(_cnicController.text.trim(), dobVal);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(widget.isUrdu
+                              ? "کسان پروفائل کی معلومات کامیابی سے محفوظ کر لی گئی ہیں۔"
+                              : "Profile settings successfully verified and saved."),
+                            backgroundColor: GeoKisanTheme.primaryGreen,
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // LAND PLOT MANAGER
+              Text(
+                widget.isUrdu ? "رجسٹرڈ زرعی اراضی (پلاٹ مینیجر)" : "Registered Land Plots Manager",
+                style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 15, color: GeoKisanTheme.primaryGreen),
+              ),
+              const SizedBox(height: 8),
+              ..._localLands.map((land) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                color: widget.activeLand.id == land.id ? GeoKisanTheme.primaryGreen.withOpacity(0.08) : Colors.white,
+                child: ListTile(
+                  leading: const Icon(Icons.landscape, color: GeoKisanTheme.primaryGreen),
+                  title: Text(land.nickname, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                    widget.isUrdu
+                      ? "پیمائش: ${land.size} ${land.unit} (${land.toAcres().toStringAsFixed(2)} ایکڑ / ${land.toHectares().toStringAsFixed(2)} ہیکٹر)"
+                      : "Size: ${land.size} ${land.unit} (~${land.toAcres().toStringAsFixed(2)} Acres / ${land.toHectares().toStringAsFixed(2)} Hectares)",
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: Text(
+                    "${land.latitude.toStringAsFixed(3)}, ${land.longitude.toStringAsFixed(3)}",
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                ),
+              )).toList(),
+              const SizedBox(height: 12),
+              // Register New Land Plot
+              Card(
+                elevation: 4,
+                color: GeoKisanTheme.surfaceCream,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.isUrdu ? "نیا زرعی پلاٹ شامل کریں" : "Register New Land Plot",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildLandRegistrationWizard(local),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // CROP REGISTRATION (m2)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.isUrdu ? "فصلوں کی لسٹ (ایکٹو گراؤنڈ)" : "Active Crops List",
+                    style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 15, color: GeoKisanTheme.primaryGreen),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () => _showAddCropDialog(local),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: Text(widget.isUrdu ? "فصل شامل کریں" : "Add Crop"),
+                    style: ElevatedButton.styleFrom(backgroundColor: GeoKisanTheme.primaryGreen),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_localCrops.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Text(widget.isUrdu ? "کوئی فصل رجسٹرڈ نہیں ہے۔" : "No crops registered for this land block."),
+                ),
+              ..._localCrops.map((crop) => Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ExpansionTile(
+                  leading: const Icon(Icons.grass, color: GeoKisanTheme.primaryGreen),
+                  title: Text(crop.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text("${crop.type} - Sowing: ${crop.sowingDate}"),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          widget.isUrdu
+                            ? "مرحلہ نشوونما: ${crop.growthStage}\nبیج کی ورائٹی: ${crop.variety}\nکسان کی اے آئی گائیڈ لائنز فعال ہیں"
+                            : "Growth Stage: ${crop.growthStage}\nSeed Variety: ${crop.variety}\nExpert path triggers are active.",
+                          style: const TextStyle(fontSize: 13, height: 1.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )).toList(),
+              const SizedBox(height: 16),
+              // Soil Moisture Telemetry Status Banner
+              Card(
+                color: GeoKisanTheme.primaryGreen.withOpacity(0.08),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.speed, color: GeoKisanTheme.primaryGreen, size: 32),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.isUrdu ? "زمین کی نمی کا انڈیکس" : "Soil Moisture Telemetry Index",
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.isUrdu
+                                  ? "حالیہ نمی ویلیو: ${_soilRawADC.toInt()} ADC۔ مٹی کافی زرخیز حالت میں ہے۔"
+                                  : "Current telemetry value: ${_soilRawADC.toInt()} ADC. Hydration density stable.",
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else ...[
+              // CROP PLANNER
+              // Yield Evaluator Module (m6)
+              Card(
+                elevation: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.isUrdu ? "پیداوار کی اے آئی پیش گوئی" : "Yield Forecasting Analytics",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.isUrdu
+                          ? "مٹی کی نمی اور فصل کی عمر کے مطابق سمارٹ پیداواری پیش گوئی"
+                          : "Continuous AI-based crop yield forecasting analytics model",
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildYieldEvaluatorModule(local),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Smart Crop Calendar Alarms (m15)
+              Card(
+                elevation: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.isUrdu ? "الارمز اور سمارٹ یاد دہانیاں شیڈول کریں" : "Schedule Alarms & Custom Sprinkler Alerts",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _alertTaskController,
+                        decoration: InputDecoration(
+                          labelText: widget.isUrdu ? "الارم کا موضوع (جیسے سپرے)" : "Alarm task topic",
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _alertDateController,
+                              decoration: const InputDecoration(labelText: "Date"),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _alertTimeController,
+                              decoration: const InputDecoration(labelText: "Time"),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildActionSubmitButton(label: "Save Calendar Alarm Reminder", onPressed: () {
+                        if (_alertTaskController.text.isNotEmpty) {
+                          setState(() {
+                            _calendarAlerts.add({
+                              "date": _alertDateController.text,
+                              "time": _alertTimeController.text,
+                              "task": _alertTaskController.text,
+                              "notes": "Custom alarm trigger active"
+                            });
+                            _alertTaskController.clear();
+                          });
+                        }
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                widget.isUrdu ? "آنے والے شیڈولز:" : "Slated Tasks reminders:",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (_calendarAlerts.isEmpty)
+                _buildLocalEmptyState(
+                  icon: Icons.alarm_off,
+                  title: widget.isUrdu ? "کوئی یاد دہانی نہیں" : "No reminders scheduled",
+                  description: widget.isUrdu
+                      ? "ابھی تک کوئی الارم یا یاد دہانی شیڈول نہیں کی گئی۔ اوپر فارم کا استعمال کریں۔"
+                      : "No calendar alerts or sprinkler task alerts scheduled yet. Use the form above to add one.",
+                )
+              else
+                ..._calendarAlerts.map((a) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.alarm, color: GeoKisanTheme.aiGold),
+                    title: Text(a["task"]!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text("Notes: ${a['notes']}"),
+                    trailing: Text("${a['date']} - ${a['time']}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
+                )).toList(),
+            ],
+          ],
+        );
+
+      case 'tab_monitor':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Smart Irrigation (m8, m9)
+            Card(
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Text(
+                      widget.isUrdu ? "پانی کا تخمینہ بہاؤ (سینسر نمی کی بنیاد پر)" : "Estimated Volumetric Flow (Calculated)",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: GeoKisanTheme.waterBlue, width: 6),
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        "$_waterFlowRate\nL/min",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: GeoKisanTheme.waterBlue, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      color: GeoKisanTheme.surfaceCream,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Text(
+                          widget.isUrdu ? _waterSummaryUr : _waterSummaryEn,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12, height: 1.4),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 3,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [GeoKisanTheme.waterBlue, Color(0xFF294E68)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.router, color: Colors.white, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.isUrdu ? "آئی او ٹی فلو میٹر اور اے آئی آبپاشی" : "IoT Flow Meter & AI Irrigation",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.water_drop, color: GeoKisanTheme.waterBlue, size: 32),
+                          title: Text(
+                            widget.isUrdu ? "سفارش کردہ آبپاشی باری" : "Optimal Watering Schedule",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              widget.isUrdu ? _waterSummaryUr : _waterSummaryEn,
+                              style: const TextStyle(fontSize: 12, height: 1.4, color: GeoKisanTheme.lightText),
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Column(
+                              children: [
+                                Text(
+                                  widget.isUrdu ? "بہاؤ کی شرح" : "Flow Rate",
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "${_waterFlowRate.toStringAsFixed(1)} L/min",
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.waterBlue, fontSize: 16),
+                                ),
+                              ],
+                            ),
+                            Container(width: 1, height: 30, color: Colors.grey[300]),
+                            Column(
+                              children: [
+                                Text(
+                                  widget.isUrdu ? "زمین کی نمی" : "Soil Moisture",
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "${_soilRawADC.toInt()} ADC",
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen, fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildActionSubmitButton(
+              label: widget.isUrdu ? "دستی طور پر پمپ چلائیں" : "Execute Manual Water Pump Run",
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      widget.isUrdu
+                          ? "آبِ رسی سمارٹ پمپ کامیابی سے شروع کر دیا گیا۔ سگنل فورسڈ۔"
+                          : "Aab-e-Rasi simulated pump relay activated successfully. Pins forced safe.",
+                    ),
+                    backgroundColor: GeoKisanTheme.primaryGreen,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            // Smart Bypass Settings (m10)
+            Card(
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.isUrdu ? "موسمیاتی بائی پاس رولز کنٹرولر" : "Smart Meteorological Irrigation Bypass",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.isUrdu
+                        ? "اگر بارش کا احتمال اس حد سے زیادہ ہو تو پمپ خودکار طور پر بند رہے گا۔"
+                        : "Irrigation skips automatically if local precipitation chances exceed selected thresholds.",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    Slider(
+                      min: 30.0,
+                      max: 95.0,
+                      value: _bypassThreshold,
+                      activeColor: GeoKisanTheme.waterBlue,
+                      onChanged: (val) {
+                        setState(() {
+                          _bypassThreshold = val;
+                        });
+                      },
+                    ),
+                    Center(child: Text("Precipitation Threshold: ${_bypassThreshold.toInt()}%")),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      title: Text(widget.isUrdu ? "خودکار بائی پاس فعال کریں" : "Enable Smart Weather Bypass"),
+                      value: _isBypassEnabled,
+                      onChanged: (val) {
+                        setState(() {
+                          _isBypassEnabled = val;
+                        });
+                      },
+                      activeColor: GeoKisanTheme.waterBlue,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Atmospheric weather (m11)
+            Text(
+              widget.isUrdu ? "7 دن کا موسمیاتی تبصرہ" : "7-Day Atmospheric Weather Outlook",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+            ),
+            const SizedBox(height: 8),
+            ..._weatherForecast.map((f) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.wb_sunny, color: GeoKisanTheme.aiGold),
+                title: Text(f["day"]!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text("${f['wind']} · ${f['rain_chance']}"),
+                trailing: Text(f["temp_range"]!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+            )).toList(),
+          ],
+        );
+
+      case 'tab_ai_hub':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Segmented toggle
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: Center(
+                      child: Text(
+                        widget.isUrdu ? "بیماری تشخیص" : "Disease Scanner",
+                        style: TextStyle(
+                          color: _aiHubToggleIndex == 0 ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    selected: _aiHubToggleIndex == 0,
+                    selectedColor: GeoKisanTheme.primaryGreen,
+                    onSelected: (val) {
+                      if (val) setState(() => _aiHubToggleIndex = 0);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ChoiceChip(
+                    label: Center(
+                      child: Text(
+                        widget.isUrdu ? "چیٹ باٹ" : "AI Chatbot",
+                        style: TextStyle(
+                          color: _aiHubToggleIndex == 1 ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    selected: _aiHubToggleIndex == 1,
+                    selectedColor: GeoKisanTheme.primaryGreen,
+                    onSelected: (val) {
+                      if (val) setState(() => _aiHubToggleIndex = 1);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_aiHubToggleIndex == 0) ...[
+              // AI CROP DOCTOR (m5)
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 4)),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _pickedImagePath != null
+                          ? Image.file(File(_pickedImagePath!), fit: BoxFit.cover)
+                          : (_diagNetworkImageUrl != null
+                              ? buildPremiumNetworkImage(_diagNetworkImageUrl!, fit: BoxFit.cover, fallbackIcon: Icons.local_hospital)
+                              : buildPremiumNetworkImage("https://images.unsplash.com/photo-1592417817098-8f3d6eb19675?auto=format&fit=crop&q=80&w=600", fit: BoxFit.cover, fallbackIcon: Icons.local_hospital)),
+                      if (_diagBoxes.isNotEmpty)
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: YoloBoundingBoxPainter(boxes: _diagBoxes, isUrdu: widget.isUrdu),
+                          ),
+                        ),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.black54, Colors.transparent, Colors.black26],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: GeoKisanTheme.primaryGreen.withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            widget.isUrdu ? "فصل صحت اسکینر" : "Crop Health Scanner",
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                      if (_pickedImagePath != null || _diagNetworkImageUrl != null)
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _pickedImagePath = null;
+                                _diagNetworkImageUrl = null;
+                                _diagnoseStatus = "Ready to Scan";
+                                _diagClass = "";
+                                _diagUrName = "";
+                                _diagSeverity = "";
+                                _diagRemedyEn = "";
+                                _diagRemedyUr = "";
+                                _diagBoxes = [];
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, color: Colors.white, size: 16),
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        bottom: 12,
+                        left: 12,
+                        right: 12,
+                        child: Text(
+                          _diagnoseStatus,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _doctorCrop,
+                decoration: InputDecoration(
+                  labelText: widget.isUrdu ? "تشخیص کے لیے فصل منتخب کریں" : "Select Crop for Diagnosis",
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.grass, color: GeoKisanTheme.primaryGreen),
+                ),
+                items: ["Wheat (Sona-21)", "Cotton (BT-902)", "Rice (Basmati)", "Mango (Chaunsa)", "Sugarcane (Sartaj)"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _doctorCrop = val);
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [GeoKisanTheme.primaryGreen, Color(0xFF5D9041)]),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: () => _pickCropImage(ImageSource.camera),
+                        icon: const Icon(Icons.photo_camera, color: Colors.white),
+                        label: Text(widget.isUrdu ? "کیمرہ سکین" : "Camera Scan"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [GeoKisanTheme.aiGold, Color(0xFFE89A12)]),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: () => _pickCropImage(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library, color: Colors.white),
+                        label: Text(widget.isUrdu ? "گیلری اپلوڈ" : "Gallery Upload"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                widget.isUrdu ? "فصل کے پتے کے نمونے (ٹیسٹ اسکین):" : "Preset Sample Leaves (Test Scan):",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: GeoKisanTheme.primaryGreen),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 90,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _buildPresetLeafCard(
+                      title: widget.isUrdu ? "گندم کا کُنگ" : "Wheat Rust",
+                      filename: "wheat_rust.jpg",
+                      imageUrl: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&q=80&w=150",
+                    ),
+                    _buildPresetLeafCard(
+                      title: widget.isUrdu ? "چاول کا جھلساؤ" : "Rice Blast",
+                      filename: "rice_blast.jpg",
+                      imageUrl: "https://images.unsplash.com/photo-1530595467537-0b5996c41f2d?auto=format&fit=crop&q=80&w=150",
+                    ),
+                    _buildPresetLeafCard(
+                      title: widget.isUrdu ? "کپاس پتا مروڑ" : "Cotton Curl Virus",
+                      filename: "cotton_curl.jpg",
+                      imageUrl: "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=150",
+                    ),
+                  ],
+                ),
+              ),
+              if (_diagClass.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _diagClass,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                border: Border.all(color: Colors.orange),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(_diagSeverity, style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 11)),
+                            ),
+                          ],
+                        ),
+                        if (_diagUrName.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text("مقامی نام: $_diagUrName", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+                        ],
+                        const Divider(height: 20),
+                        Text(widget.isUrdu ? "تجویز کردہ علاج (اے آئی پریسکرپشن):" : "Recommended AI Agronomy Treatment:", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        const SizedBox(height: 8),
+                        Text(widget.isUrdu ? _diagRemedyUr : _diagRemedyEn, style: const TextStyle(fontSize: 13, height: 1.5)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ] else ...[
+              // CHATBOT WORKSPACE (m4)
+              Container(
+                height: 250,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey[300]!)),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: _localChatHistory.length + (_isChatLoading ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == _localChatHistory.length) return Align(alignment: Alignment.centerLeft, child: _buildChatShimmerBubble());
+                    final chat = _localChatHistory[index];
+                    bool isBot = chat["sender"] == "bot";
+                    return Align(
+                      alignment: isBot ? Alignment.centerLeft : Alignment.centerRight,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isBot ? const Color(0xFFEBF5EE) : const Color(0xFFFFF7E6),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: isBot ? GeoKisanTheme.primaryGreen : GeoKisanTheme.aiGold),
+                        ),
+                        child: Text(chat["text"]!, style: const TextStyle(fontSize: 13)),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _chatController,
+                      decoration: InputDecoration(hintText: widget.isUrdu ? "یہاں اردو، انگلش یا رومن اردو میں لکھیں..." : "Type here in Urdu or English...", border: const OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(onPressed: () => _sendAiChatMessage(), icon: const Icon(Icons.send, color: GeoKisanTheme.primaryGreen)),
+                ],
+              ),
+            ],
+          ],
+        );
+
+      case 'm3': // Navigate Tab (Geospatial)
+        final textColor = widget.isDarkMode ? Colors.white : GeoKisanTheme.lightText;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.isUrdu ? "فارمز کا فضائی نقشہ (سیٹیلائٹ)" : "Farm Satellite Geospatial Workspace",
+              style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 15, color: GeoKisanTheme.primaryGreen),
+            ),
+            const SizedBox(height: 12),
+            _buildInteractiveMapSelector(local),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 2,
+              color: GeoKisanTheme.surfaceCream,
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FarmBoundaryDrawingScreen(
+                        isUrdu: widget.isUrdu,
+                        isDarkMode: widget.isDarkMode,
+                        activeLand: widget.activeLand,
+                        backendUrl: widget.backendUrl,
+                        isOffline: widget.isOffline,
+                        initialPoints: _drawnBoundaryPoints,
+                        onBoundarySaved: (points) {
+                          setState(() {
+                            _drawnBoundaryPoints = points;
+                          });
+                        },
+                      ),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit_road, color: GeoKisanTheme.primaryGreen, size: 28),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.isUrdu ? "پلاٹ کی حدود نقشے پر بنائیں" : "Draw Plot Boundary on Map",
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _drawnBoundaryPoints.isEmpty
+                                  ? (widget.isUrdu ? "کوئی حدود متعین نہیں ہے۔ حدود بنانے کے لیے یہاں ٹیپ کریں۔" : "No boundary drawn. Tap to set boundaries.")
+                                  : (widget.isUrdu ? "حدود متعین ہے: ${_drawnBoundaryPoints.length} پوائنٹس" : "Boundary active: ${_drawnBoundaryPoints.length} points"),
+                              style: const TextStyle(color: Colors.grey, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              widget.isUrdu ? "پلاٹس کے درمیان تبدیل کریں:" : "Switch Active Dashboard View:",
+              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
+            ),
+            const SizedBox(height: 8),
+            ..._localLands.map((l) => Card(
+              color: widget.activeLand.id == l.id ? GeoKisanTheme.primaryGreen.withOpacity(0.1) : null,
+              child: ListTile(
+                leading: const Icon(Icons.place, color: GeoKisanTheme.primaryGreen),
+                title: Text(l.nickname),
+                subtitle: Text("${l.size} ${l.unit} - Active Crop: Wheat"),
+                trailing: ElevatedButton(
+                  onPressed: () {
+                    if (widget.onSwitchLand != null) {
+                      widget.onSwitchLand!(l);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(widget.isUrdu ? "فعال پلاٹ تبدیل کر دیا گیا ہے" : "Active land updated successfully")),
+                      );
+                    }
+                  },
+                  child: Text(widget.isUrdu ? "منتخب کریں" : "Select"),
+                ),
+              ),
+            )).toList(),
+          ],
+        );
+
+      case 'tab_more':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Mandi prices (m17)
+            Text(
+              widget.isUrdu ? "منڈی کی تازہ ترین قیمتیں" : "Live Wholesale Mandi Price Indices",
+              style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              decoration: InputDecoration(
+                hintText: widget.isUrdu ? "فصل سرچ کریں (جیسے گندم)" : "Filter commodity prices...",
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (val) {
+                setState(() {
+                  _mandiSearch = val;
+                });
+                _fetchMandiPrices();
+              },
+            ),
+            const SizedBox(height: 12),
+            ..._mandiPrices.map((p) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.trending_up, color: Colors.green),
+                title: Text(p["item"]!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text("${p['mandi']} · Source: ${p['source']}"),
+                trailing: Text(p["rate"]!, style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen)),
+              ),
+            )).toList(),
+            const Divider(height: 32),
+
+            // Financial ledger manager (m18)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.isUrdu ? "موسمیاتی مالیاتی کھاتا (لیجر)" : "Financial Ledger Manager",
+                  style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Card(
+              color: GeoKisanTheme.surfaceCream,
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  children: [
+                    TextField(controller: _ledgerDescController, decoration: InputDecoration(labelText: widget.isUrdu ? "خرچے یا آمدنی کی تفصیل" : "Transaction description")),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(controller: _ledgerAmountController, decoration: const InputDecoration(labelText: "Amount (Rs)"), keyboardType: TextInputType.number)),
+                        const SizedBox(width: 8),
+                        DropdownButton<String>(
+                          value: _ledgerCategory,
+                          items: ["Expense", "Income"].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                          onChanged: (val) {
+                            if (val != null) setState(() => _ledgerCategory = val);
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildActionSubmitButton(label: "Save Transaction Log", onPressed: () {
+                      final amt = double.tryParse(_ledgerAmountController.text) ?? 0.0;
+                      if (_ledgerDescController.text.isNotEmpty && amt > 0) {
+                        setState(() {
+                          _localLedgerHistory.add(LedgerItem(
+                            id: randomString(6),
+                            description: _ledgerD

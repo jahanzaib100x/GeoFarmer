@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Add state variables for YOLO bounding boxes and preset/network leaf preview URLs in main.dart.\"",
+  "EndLine": "1381",
+  "Instruction": "\"Declare bounding box list and preview image url state variables.\"",
+  "ReplacementContent": "\"  String _doctorCrop = \\\"Wheat (Sona-21)\\\";\\n  List<dynamic> _boundingBoxes = [];\\n  String? _previewImageUrl;\"",
+  "StartLine": "1380",
+  "TargetContent": "\"  String _doctorCrop = \\\"Wheat (Sona-21)\\\";\"",
+  "TargetFile": "\"f:\\\\.Hackathon\\\\0.GeoFarmer\\\\frontend\\\\lib\\\\main.dart\"",
+  "toolAction": "\"Adding bboxes state variables to main.dart\"",
+  "toolSummary": "\"Replace file content\""
+}

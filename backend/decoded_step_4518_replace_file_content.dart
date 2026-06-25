@@ -1,0 +1,14 @@
+/*
+Description: "Insert YoloBoundingBoxPainter class inside main.dart to draw bounding boxes on the frontend."
+StartLine: 5882
+EndLine: 5892
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+*/
+
+// ==================== TARGET CONTENT ====================
+"  @override\n  bool shouldRepaint(covariant BoundaryPainter oldDelegate) {\n    return oldDelegate.points != points || \n           oldDelegate.isClosed != isClosed || \n           oldDelegate.hoverPoint != hoverPoint ||\n           oldDelegate.analysisType != analysisType ||\n           oldDelegate.gridOverlayPoints != gridOverlayPoints;\n  }\n}\n\nclass FarmBoundaryDrawingScreen extends StatefulWidget {"
+
+// ==================== REPLACEMENT CONTENT ====================
+"  @override\n  bool shouldRepaint(covariant BoundaryPainter oldDelegate) {\n    return oldDelegate.points != points || \n           oldDelegate.isClosed != isClosed || \n           oldDelegate.hoverPoint != hoverPoint ||\n           oldDelegate.analysisType != analysisType ||\n           oldDelegate.gridOverlayPoints != gridOverlayPoints;\n  }\n}\n\nclass YoloBoundingBoxPainter extends CustomPainter {\n  final List<dynamic> boxes;\n  final bool isUrdu;\n\n  YoloBoundingBoxPainter({required this.boxes, required this.isUrdu});\n\n  @override\n  void paint(Canvas canvas, Size size) {\n    for (var box in boxes) {\n      if (box == null) continue;\n      final double x = (box['x'] as num).toDouble() * size.width;\n      final double y = (box['y'] as num).toDouble() * size.height;\n      final double w = (box['width'] as num).toDouble() * size.width;\n      final double h = (box['height'] as num).toDouble() * size.height;\n      final String className = box['class_name'] ?? (isUrdu ? 'پودوں کی بیماری' : 'Disease');\n      final double confidence = (box['confidence'] as num).toDouble();\n\n      final paint = Paint()\n        ..color = Colors.redAccent\n        ..style = PaintingStyle.stroke\n        ..strokeWidth = 3.0;\n\n      final rect = Rect.fromLTWH(x, y, w, h);\n      canvas.drawRect(rect, paint);\n\n      final fillPaint = Paint()\n        ..color = Colors.redAccent.withOpacity(0.15)\n        ..style = PaintingStyle.fill;\n      canvas.drawRect(rect, fillPaint);\n\n      final textSpan = TextSpan(\n        text: \"$className (${(confidence * 100).toStringAsFixed(0)}%)\",\n        style: const TextStyle(\n          color: Colors.white,\n          fontSize: 10,\n          fontWeight: FontWeight.bold,\n          backgroundColor: Colors.redAccent,\n        ),\n      );\n\n      final textPainter = TextPainter(\n        text: textSpan,\n        textDirection: TextDirection.ltr,\n      );\n      textPainter.layout();\n\n      final labelPaint = Paint()\n        ..color = Colors.redAccent;\n\n      fina
+<truncated 571 bytes>
+

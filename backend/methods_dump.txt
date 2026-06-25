@@ -1,0 +1,19 @@
+1246: Widget _buildModuleHeaderImage(String moduleId) {
+2828: Widget _buildInputField({required String label, required TextEditingController controller, required String hint}) {
+2838: Widget _buildActionSubmitButton({required String label, required VoidCallback onPressed}) {
+2849: Widget _buildLanguageSelectorButton(String label, String lang) {
+2872: Widget _buildLandRegistrationWizard(AppLocalization local) {
+2958: Widget _buildInteractiveMapSelector(AppLocalization local) {
+3087: Widget _buildYieldEvaluatorModule(AppLocalization local) {
+3148: Widget _buildCivicComplaintForm(AppLocalization local, String type) {
+3203: Widget _buildWhatsAppStyleDiscussionForum(AppLocalization local) {
+3333: Widget _buildCreditWebviewTile(String title, String targetUrl, AppLocalization local) {
+3348: Widget _buildMiniBrowserWebview(AppLocalization local) {
+3429: Widget _buildChatShimmerBubble() {
+3818: Widget _buildSimulatedLineChart() {
+3828: Widget _buildPresetLeafCard({required String title, required String filename, required String imageUrl}) {
+3877: Widget _buildDroneStressMapGrid(AppLocalization local) {
+4007: Widget _buildSupplyCard(String product, String merchant, String price, String distance) {
+4033: Widget _buildNewsTile(String source, String headline, String age) {
+4054: Widget _buildLocalEmptyState({
+5022: Widget _buildAreaCard(String value, String label, Color textColor) {

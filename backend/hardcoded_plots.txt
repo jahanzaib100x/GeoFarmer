@@ -1,0 +1,6 @@
+519: LandNode(id: "L1", nickname: "Plot A (Shujabad Sector)", size: 12.0, unit: "Acres", latitude: 30.1575, longitude: 71.5249, description: "Sandy clay wheat zone"),
+520: LandNode(id: "L2", nickname: "Plot B (North Gate)", size: 8.0, unit: "Kanals", latitude: 30.1620, longitude: 71.5310, description: "Fallow cotton prepare zone"),
+521: LandNode(id: "L3", nickname: "Orchard East", size: 40.0, unit: "Marlas", latitude: 30.1530, longitude: 71.5190, description: "Mango orchard grid"),
+589: nickname: "Plot A ($_onboardingLocation)",
+2592: widget.isUrdu ? "پلاٹ کی حدود نقشے پر بنائیں" : "Draw Plot Boundary on Map",
+4771: title: Text(widget.isUrdu ? "پلاٹ باؤنڈری ڈرائنگ" : "Plot Boundary Workspace"),

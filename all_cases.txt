@@ -1,0 +1,186 @@
+Line 424: case 'Marlas':
+Line 426: case 'Kanals':
+Line 428: case 'Murabbas':
+Line 430: case 'Acres':
+Line 1001: case "Wheat": cropUrdu = "گندم (Wheat)"; break;
+Line 1002: case "Cotton": cropUrdu = "کپاس (Cotton)"; break;
+Line 1003: case "Rice": cropUrdu = "چاول (Rice)"; break;
+Line 1004: case "Mango": cropUrdu = "آسٹرین آم (Mango)"; break;
+Line 1005: case "Sugarcane": cropUrdu = "گنا (Sugarcane)"; break;
+Line 1642: case "m2": iconName = "dashboard"; break;
+Line 1643: case "m3": iconName = "map"; break;
+Line 1644: case "m5": iconName = "local_hospital"; break;
+Line 1645: case "m6": iconName = "analytics"; break;
+Line 1646: case "m8": iconName = "water_drop"; break;
+Line 1647: case "m9": iconName = "speed"; break;
+Line 1648: case "m10": iconName = "alt_route"; break;
+Line 1649: case "m11": iconName = "cloud"; break;
+Line 1650: case "m12": iconName = "campaign"; break;
+Line 1651: case "m13": iconName = "ac_unit"; break;
+Line 1652: case "m14": iconName = "center_focus_strong"; break; // Drone View
+Line 1653: case "m15": iconName = "calendar_month"; break;
+Line 1654: case "m22": iconName = "pin_drop"; break; // Water Theft GPS
+Line 1655: case "m24": iconName = "security"; break; // Crop Insurance
+Line 1765: case "m1": iconName = "person"; break;
+Line 1766: case "m2": iconName = "dashboard"; break;
+Line 1767: case "m3": iconName = "map"; break;
+Line 1768: case "m4": iconName = "chat_bubble"; break;
+Line 1769: case "m5": iconName = "local_hospital"; break;
+Line 1770: case "m6": iconName = "analytics"; break;
+Line 1771: case "m7": iconName = "record_voice_over"; break;
+Line 1772: case "m8": iconName = "water_drop"; break;
+Line 1773: case "m9": iconName = "speed"; break;
+Line 1774: case "m10": iconName = "alt_route"; break;
+Line 1775: case "m11": iconName = "cloud"; break;
+Line 1776: case "m12": iconName = "campaign"; break;
+Line 1777: case "m13": iconName = "ac_unit"; break;
+Line 1778: case "m14": iconName = "center_focus_strong"; break;
+Line 1779: case "m15": iconName = "calendar_month"; break;
+Line 1780: case "m16": iconName = "shopping_cart"; break;
+Line 1781: case "m17": iconName = "trending_up"; break;
+Line 1782: case "m18": iconName = "account_balance_wallet"; break;
+Line 1783: case "m19": iconName = "credit_card"; break;
+Line 1784: case "m20": iconName = "navigation"; break;
+Line 1785: case "m21": iconName = "feedback"; break;
+Line 1786: case "m22": iconName = "pin_drop"; break;
+Line 1787: case "m23": iconName = "card_giftcard"; break;
+Line 1788: case "m24": iconName = "security"; break;
+Line 1789: case "m25": iconName = "feed"; break;
+Line 1790: case "m26": iconName = "forum"; break;
+Line 1791: case "m27": iconName = "translate"; break;
+Line 1792: case "m28": iconName = "mic"; break;
+Line 1793: case "m29": iconName = "backup"; break;
+Line 1794: case "m30": iconName = "sell"; break;
+Line 1930: case "m1": iconName = "person"; break;
+Line 1931: case "m4": iconName = "chat_bubble"; break;
+Line 1932: case "m21": iconName = "feedback"; break;
+Line 1933: case "m23": iconName = "card_giftcard"; break;
+Line 1934: case "m25": iconName = "feed"; break;
+Line 1935: case "m26": iconName = "forum"; break;
+Line 1936: case "m27": iconName = "translate"; break;
+Line 1937: case "m28": iconName = "mic"; break;
+Line 1938: case "m29": iconName = "backup"; break;
+Line 1957: case 0:
+Line 1959: case 1:
+Line 1965: case 2:
+Line 2098: case 'person': cardIcon = Icons.person_outline; break;
+Line 2099: case 'dashboard': cardIcon = Icons.dashboard_outlined; break;
+Line 2100: case 'map': cardIcon = Icons.map_outlined; break;
+Line 2101: case 'chat_bubble': cardIcon = Icons.chat_bubble_outline; break;
+Line 2102: case 'local_hospital': cardIcon = Icons.local_hospital_outlined; break;
+Line 2103: case 'analytics': cardIcon = Icons.analytics_outlined; break;
+Line 2104: case 'record_voice_over': cardIcon = Icons.record_voice_over_outlined; break;
+Line 2105: case 'water_drop': cardIcon = Icons.water_drop_outlined; break;
+Line 2106: case 'speed': cardIcon = Icons.speed_outlined; break;
+Line 2107: case 'alt_route': cardIcon = Icons.alt_route_outlined; break;
+Line 2108: case 'cloud': cardIcon = Icons.cloud_outlined; break;
+Line 2109: case 'campaign': cardIcon = Icons.campaign_outlined; break;
+Line 2110: case 'ac_unit': cardIcon = Icons.ac_unit_outlined; break;
+Line 2111: case 'flight_takeoff': cardIcon = Icons.center_focus_strong; break;
+Line 2112: case 'center_focus_strong': cardIcon = Icons.center_focus_strong; break;
+Line 2113: case 'calendar_month': cardIcon = Icons.calendar_month_outlined; break;
+Line 2114: case 'shopping_cart': cardIcon = Icons.shopping_cart_outlined; break;
+Line 2115: case 'trending_up': cardIcon = Icons.trending_up_outlined; break;
+Line 2116: case 'account_balance_wallet': cardIcon = Icons.account_balance_wallet_outlined; break;
+Line 2117: case 'credit_card': cardIcon = Icons.credit_card_outlined; break;
+Line 2118: case 'navigation': cardIcon = Icons.navigation_outlined; break;
+Line 2119: case 'feedback': cardIcon = Icons.feedback_outlined; break;
+Line 2120: case 'pin_drop': cardIcon = Icons.pin_drop_outlined; break;
+Line 2121: case 'card_giftcard': cardIcon = Icons.card_giftcard_outlined; break;
+Line 2122: case 'security': cardIcon = Icons.security_outlined; break;
+Line 2123: case 'feed': cardIcon = Icons.feed_outlined; break;
+Line 2124: case 'forum': cardIcon = Icons.forum_outlined; break;
+Line 2125: case 'translate': cardIcon = Icons.translate_outlined; break;
+Line 2126: case 'mic': cardIcon = Icons.mic_none_outlined; break;
+Line 2127: case 'backup': cardIcon = Icons.backup_outlined; break;
+Line 2128: case 'sell': cardIcon = Icons.sell_outlined; break;
+Line 2170: case "m1": liveDataPreview = "3 پلاٹ رجسٹرڈ"; break;
+Line 2171: case "m2": liveDataPreview = "فصل: گندم (Sona-21)"; break;
+Line 2172: case "m3": liveDataPreview = "ملٹی پلاٹ فعال"; break;
+Line 2173: case "m4": liveDataPreview = "سوالات پوچھیں"; break;
+Line 2174: case "m5": liveDataPreview = "بیماری سکینر"; break;
+Line 2175: case "m6": liveDataPreview = "تخمینہ: 42 من/ایکڑ"; break;
+Line 2176: case "m7": liveDataPreview = "آڑتی سودے بازی کوچ"; break;
+Line 2177: case "m8": liveDataPreview = "آبپاشی ڈیش بورڈ"; break;
+Line 2178: case "m9": liveDataPreview = "پانی: 450L استعمال"; break;
+Line 2179: case "m10": liveDataPreview = "خودکار بائی پاس"; break;
+Line 2180: case "m11": liveDataPreview = "32°C · کل بارش"; break;
+Line 2181: case "m12": liveDataPreview = "کوئی الرٹ نہیں"; break;
+Line 2182: case "m13": liveDataPreview = "کورا خطرہ: کم"; break;
+Line 2183: case "m14": liveDataPreview = "نباتاتی انڈیکس: 0.72"; break;
+Line 2184: case "m15": liveDataPreview = "اگلا کام: کھاد دینا"; break;
+Line 2185: case "m16": liveDataPreview = "یوریا: 4800 فی بوری"; break;
+Line 2186: case "m17": liveDataPreview = "گندم: 3240 روپے"; break;
+Line 2187: case "m18": liveDataPreview = "میزان: +146,500 روپے"; break;
+Line 2188: case "m19": liveDataPreview = "بینک لون دستیاب"; break;
+Line 2189: case "m20": liveDataPreview = "فاصلہ: 12 کلومیٹر"; break;
+Line 2190: case "m21": liveDataPreview = "کوئی شکایت نہیں"; break;
+Line 2191: case "m22": liveDataPreview = "پانی چوری رپورٹ"; break;
+Line 2192: case "m23": liveDataPreview = "سبسڈی الرٹ فعال"; break;
+Line 2193: case "m24": liveDataPreview = "پالیسی: فعال"; break;
+Line 2194: case "m25": liveDataPreview = "قرضہ نیوز اپڈیٹ"; break;
+Line 2195: case "m26": liveDataPreview = "3 دیوان سرگرمیاں"; break;
+Line 2196: case "m27": liveDataPreview = "زبان: اردو، پنجابی"; break;
+Line 2197: case "m28": liveDataPreview = "آواز کمانڈ موڈ"; break;
+Line 2198: case "m29": liveDataPreview = "لوکل ڈیٹا تیار"; break;
+Line 2199: case "m30": liveDataPreview = "ڈیٹا مارکیٹ فعال"; break;
+Line 2203: case "m1": liveDataPreview = "3 Plots Registered"; break;
+Line 2204: case "m2": liveDataPreview = "Crop: Wheat (Sona-21)"; break;
+Line 2205: case "m3": liveDataPreview = "Multi-plot Active"; break;
+Line 2206: case "m4": liveDataPreview = "Ask anything"; break;
+Line 2207: case "m5": liveDataPreview = "Disease Scanner"; break;
+Line 2208: case "m6": liveDataPreview = "Est: 42 maunds/acre"; break;
+Line 2209: case "m7": liveDataPreview = "Aroti Bargain Coach"; break;
+Line 2210: case "m8": liveDataPreview = "Irrigation Dashboard"; break;
+Line 2211: case "m9": liveDataPreview = "Used: 450L this week"; break;
+Line 2212: case "m10": liveDataPreview = "Auto Bypass Active"; break;
+Line 2213: case "m11": liveDataPreview = "32°C · Rain tomorrow"; break;
+Line 2214: case "m12": liveDataPreview = "0 Active Warnings"; break;
+Line 2215: case "m13": liveDataPreview = "Frost risk: Low"; break;
+Line 2216: case "m14": liveDataPreview = "NDVI Index: 0.72"; break;
+Line 2217: case "m15": liveDataPreview = "Task: Apply Fertilizer"; break;
+Line 2218: case "m16": liveDataPreview = "Urea: Rs 4,800/bag"; break;
+Line 2219: case "m17": liveDataPreview = "Wheat: Rs 3,240/40kg"; break;
+Line 2220: case "m18": liveDataPreview = "Ledger: Rs +146,500"; break;
+Line 2221: case "m19": liveDataPreview = "ZTBL Loans Available"; break;
+Line 2222: case "m20": liveDataPreview = "12km to local Mandi"; break;
+Line 2223: case "m21": liveDataPreview = "0 Active Complaints"; break;
+Line 2224: case "m22": liveDataPreview = "Report Theft (GPS)"; break;
+Line 2225: case "m23": liveDataPreview = "Subsidy Alert active"; break;
+Line 2226: case "m24": liveDataPreview = "Policy: Wheat-2026"; break;
+Line 2227: case "m25": liveDataPreview = "ZTBL Loans Announced"; break;
+Line 2228: case "m26": liveDataPreview = "3 active forums today"; break;
+Line 2229: case "m27": liveDataPreview = "Languages: UR, EN, PA"; break;
+Line 2230: case "m28": liveDataPreview = "Voice commands active"; break;
+Line 2231: case "m29": liveDataPreview = "Local Database ready"; break;
+Line 2232: case "m30": liveDataPreview = "Data Market active"; break;
+Line 3283: case 'm1': // Profile Setup
+Line 3394: case 'm2': // Crop Dashboard
+Line 3443: case 'm3': // Multi-Farm Navigation map loader
+Line 3536: case 'm4': // AI Chatbot Center
+Line 3645: case 'm5': // AI Crop Doctor
+Line 4049: case 'm6': // Yield Forecasting
+Line 4063: case 'm7': // Voice Negotiation Trainer
+Line 4641: case 'm8': // Water Management
+Line 4756: case 'm9': // Volumetric Discharge Estimator
+Line 4793: case 'm10': // Weather Bypass Controller
+Line 4830: case 'm11': // Weather Forecasting
+Line 4867: case 'm12': // Emergency Disaster Gateways
+Line 4893: case 'm13': // Frost Prevention
+Line 4938: case 'm14': // Drone AI Vision
+Line 4963: case 'm15': // Smart Crop Calendar with Alerts
+Line 5045: case 'm16': // Agri-Input Storefront & Merchant Mode
+Line 5275: case 'm17': // Mandi price tracking
+Line 5318: case 'm18': // Financial Ledger Editor
+Line 5552: case 'm19': // Credit directory in minibrowser webviews
+Line 5562: case 'm20': // Mandi Route Optimizer
+Line 5685: case 'm21': // Complaint Dashboard
+Line 5700: case 'm22': // Water Theft GPS Reporter
+Line 5713: case 'm23': // Subsidy portal
+Line 5721: case 'm24': // Crop Insurance Assistant
+Line 5748: case 'm25': // Farmer news feed
+Line 5762: case 'm26': // Overhauled Discussion Forum
+Line 5777: case 'm27': // Universal Language matrix with 7 dialects
+Line 5795: case 'm28': // Urdu Voice first Command workspace
+Line 5973: case 'm29': // Offline resilience configuration dashboard
+Line 6150: case 'm30': // Anonymized Data Marketplace

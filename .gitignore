@@ -36,3 +36,4 @@ Desktop.ini
 backend/*.json
 backend/.env
 .env
+reference_repos/

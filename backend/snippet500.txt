@@ -1,0 +1,100 @@
+501:   double _onboardingLandSize = 0.0;
+502:   String _onboardingLandUnit = "Acres";
+503:   String _onboardingLocation = "Multan";
+504:   bool _isBeginnerMode = false;
+505:   final TextEditingController _onboardingLocationController = TextEditingController();
+506:   @override
+507:   void dispose() {
+508:     _onboardingLocationController.dispose();
+509:     super.dispose();
+510:   }
+511:   // Top API listener address dynamically scoped to global configuration
+512:   String get _backendUrl => globalBackendUrl;
+513:   // Persistent user profile databases
+514:   String _farmerCNIC = "36302-1234567-8";
+515:   String _farmerDOB = "1988-06-15";
+516:   bool _isOffline = false;
+517:   // Lands database list
+518:   List<LandNode> _lands = [
+519:     LandNode(id: "L1", nickname: "Plot A (Shujabad Sector)", size: 12.0, unit: "Acres", latitude: 30.1575, longitude: 71.5249, description: "Sandy clay wheat zone"),
+520:     LandNode(id: "L2", nickname: "Plot B (North Gate)", size: 8.0, unit: "Kanals", latitude: 30.1620, longitude: 71.5310, description: "Fallow cotton prepare zone"),
+521:     LandNode(id: "L3", nickname: "Orchard East", size: 40.0, unit: "Marlas", latitude: 30.1530, longitude: 71.5190, description: "Mango orchard grid"),
+522:   ];
+523:   late LandNode _activeLand;
+524:   // Search filter
+525:   String _searchQuery = "";
+526:   // Land-scoped data caches
+527:   Map<String, List<CropRecord>> _landCrops = {};
+528:   Map<String, List<Map<String, String>>> _landChats = {};
+529:   Map<String, List<LedgerItem>> _landLedgers = {};
+530:   Map<String, double> _landTelemetrySoil = {};
+531:   // Interactive controllers
+532:   final ScrollController _dashboardScrollController = ScrollController();
+533:   // Dynamic Image carousel state variables
+534:   int _carouselIndex = 0;
+535:   final List<Map<String, String>> _carouselItems = [
+536:     {
+537:       "url": "https://images.unsplash.com/photo-1560493676-04071c5f467b?auto=format&fit=crop&q=80&w=800",
+538:       "title_en": "Precision Soil Diagnosis",
+539:       "title_ur": "جدید زمینی نمی کی جانچ"
+540:     },
+541:     {
+542:       "url": "https://images.unsplash.com/photo-1463121088476-3ff6c051f50a?auto=format&fit=crop&q=80&w=800",
+543:       "title_en": "Aab-e-Rasi Smart Controller Active",
+544:       "title_ur": "آبِ رسی سمارٹ پمپ فعال ہے"
+545:     },
+546:     {
+547:       "url": "https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&q=80&w=800",
+548:       "title_en": "Real-time AI Pathology",
+549:       "title_ur": "اے آئی فصلوں کا معائنہ"
+550:     }
+551:   ];
+552:   @override
+553:   void initState() {
+554:     super.initState();
+555:     _activeLand = _lands[0];
+556:     _loadOnboardingPreferences();
+557:     // Seed default structures per land
+558:     for (var l in _lands) {
+559:       _landCrops[l.id] = [
+560:         CropRecord(name: "Wheat (Sona-21)", growthStage: "Milk Stage", sowingDate: "2025-11-15", variety: "Sona-2021", type: "Grain"),
+561:         CropRecord(name: "Cotton (BT-902)", growthStage: "Sowing Stage", sowingDate: "2026-05-10", variety: "BT-902", type: "Cash Crop")
+562:       ];
+563:       _landChats[l.id] = [
+564:         {"sender": "bot", "text": "السلام علیکم کسان بھائی! جیو کسان اے آئی اسسٹنٹ میں خوش آمدید۔ میں آپ کے سمارٹ فارم کا تجزیہ کر سکتا ہوں۔"},
+565:         {"sender": "bot", "text": "Welcome to GeoFarmer! Ask me anything about crop cycles, irrigation runs, or fertilizer prices."}
+566:       ];
+567:       _landLedgers[l.id] = [
+568:         LedgerItem(id: "1", description: "Bahar Seed Purchase", category: "Expense", amount: 14500.0, date: "2026-05-12"),
+569:         LedgerItem(id: "2", description: "Urea Fertilizer 5 bags", category: "Expense", amount: 24000.0, date: "2026-05-18"),
+570:         LedgerItem(id: "3", description: "Wheat Grain Harvest Sale", category: "Income", amount: 185000.0, date: "2026-05-24")
+571:       ];
+572:       _landTelemetrySoil[l.id] = 520.0;
+573:     }
+574:   }
+575:   Future<void> _loadOnboardingPreferences() async {
+576:     try {
+577:       final prefs = await SharedPreferences.getInstance();
+578:       setState(() {
+579:         _hasCompletedOnboarding = prefs.getBool('has_completed_onboarding') ?? false;
+580:         _isBeginnerMode = prefs.getBool('is_beginner_mode') ?? false;
+581:         _onboardingSelectedCrops = prefs.getStringList('onboarding_crops') ?? [];
+582:         _onboardingLandSize = prefs.getDouble('onboarding_size') ?? 0.0;
+583:         _onboardingLandUnit = prefs.getString('onboarding_unit') ?? "Acres";
+584:         _onboardingLocation = prefs.getString('onboarding_location') ?? "Multan";
+585:         _onboardingLocationController.text = _onboardingLocation;
+586:         if (_hasCompletedOnboarding) {
+587:           _lands[0] = LandNode(
+588:             id: "L1",
+589:             nickname: "Plot A ($_onboardingLocation)",
+590:             size: _onboardingLandSize,
+591:             unit: _onboardingLandUnit,
+592:             latitude: 30.1575,
+593:             longitude: 71.5249,
+594:             description: _onboardingSelectedCrops.isNotEmpty
+595:                 ? "Registered crop: ${_onboardingSelectedCrops.join(', ')}"
+596:                 : "Sandy clay wheat zone",
+597:           );
+598:           _activeLand = _lands[0];
+599:         }
+600:       });

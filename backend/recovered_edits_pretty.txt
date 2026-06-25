@@ -1,0 +1,198 @@
+================================================================================
+FILE: step_4305_replace_file_content.txt
+================================================================================
+Description: "Overhaul BoundaryPainter and FarmBoundaryDrawingScreen in main.dart to implement Earth Engine Satellite analysis, dynamic ray-casting grid overlay, and bilingual reports."
+StartLine: 5777
+EndLine: 6172
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"// ==========================================\n// FARM BOUNDARY DRAWING SYSTEM & PAINTER\n// ==========================================\n\nclass BoundaryPainter extends CustomPainter {\n  final List<Offset> points;\n  final bool isClosed;\n  final Offset? hoverPoint;\n\n  BoundaryPainter({\n    required this.points,\n    this.isClosed = false,\n    this.hoverPoint,\n  });\n\n  @override\n  void paint(Canvas canvas, Size size) {\n    if (points.isEmpty) return;\n\n    final fillPaint = Paint()\n      ..color = const Color(0x334A7C2F) // Translucent green fill\n      ..style = PaintingStyle.fill;\n\n    final strokePaint = Paint()\n      ..color = const Color(0xFF4A7C2F)\n      ..style = PaintingStyle.stroke\n      ..strokeWidth = 3.0;\n\n    final activeStrokePaint = Paint()\n      ..color = const Color(0xFFC8860A)\n      ..style = PaintingStyle.stroke\n      ..strokeWidth = 2.0\n      ..strokeCap = StrokeCap.round;\n\n    final pointPaint = Paint()\n      ..color = const Color(0xFFC8860A)\n      ..style = PaintingStyle.fill;\n\n    final startPointPaint = Paint()\n      ..color = const Color(0xFF4A7C2F)\n      ..style = PaintingStyle.fill;\n\n    final path = Path();\n    path.moveTo(points[0].dx, points[0].dy);\n    for (int i = 1; i < points.length; i++) {\n      path.lineTo(points[i].dx, points[i].dy);\n    }\n\n    if (isClosed && points.length >= 3) {\n      path.close();\n      canvas.drawPath(path, fillPaint);\n      canvas.drawPath(path, strokePaint);\n    } else {\n      canvas.drawPath(path, strokePaint);\n      if (hoverPoint != null) {\n        canvas.drawLine(points.last, hoverPoint!, activeStrokePaint);\n      }\n    }\n\n    // Draw point markers\n    for (int i = 0; i < points.length; i++) {\n      final p = points[i];\n      if (i == 0) {\n        canvas.drawCircle(p, 8.0, startPointPaint);\n        canvas.drawCircle(p, 5.0, Paint()..color = Colors.white);\n      } else {\n        canvas.drawCircle(p, 6.0, pointPaint);\n      }\n      // Draw index text to help identify the points\n      final t
+<truncated 11582 bytes>
+
+--- REPLACEMENT CONTENT ---
+"// ==========================================\n// FARM BOUNDARY DRAWING SYSTEM & PAINTER\n// ==========================================\n\nclass BoundaryPainter extends CustomPainter {\n  final List<Offset> points;\n  final bool isClosed;\n  final Offset? hoverPoint;\n  final String analysisType; // \"none\", \"ndvi\", \"thermal\"\n  final List<Map<String, dynamic>> gridOverlayPoints;\n\n  BoundaryPainter({\n    required this.points,\n    this.isClosed = false,\n    this.hoverPoint,\n    this.analysisType = \"none\",\n    this.gridOverlayPoints = const [],\n  });\n\n  @override\n  void paint(Canvas canvas, Size size) {\n    if (points.isEmpty) return;\n\n    final fillPaint = Paint()\n      ..color = analysisType == \"none\" ? const Color(0x334A7C2F) : Colors.transparent\n      ..style = PaintingStyle.fill;\n\n    final strokePaint = Paint()\n      ..color = const Color(0xFF4A7C2F)\n      ..style = PaintingStyle.stroke\n      ..strokeWidth = 3.0;\n\n    final activeStrokePaint = Paint()\n      ..color = const Color(0xFFC8860A)\n      ..style = PaintingStyle.stroke\n      ..strokeWidth = 2.0\n      ..strokeCap = StrokeCap.round;\n\n    final pointPaint = Paint()\n      ..color = const Color(0xFFC8860A)\n      ..style = PaintingStyle.fill;\n\n    final startPointPaint = Paint()\n      ..color = const Color(0xFF4A7C2F)\n      ..style = PaintingStyle.fill;\n\n    final path = Path();\n    path.moveTo(points[0].dx, points[0].dy);\n    for (int i = 1; i < points.length; i++) {\n      path.lineTo(points[i].dx, points[i].dy);\n    }\n\n    if (isClosed && points.length >= 3) {\n      path.close();\n      canvas.drawPath(path, fillPaint);\n      canvas.drawPath(path, strokePaint);\n      \n      // Draw grid overlay points for satellite raster scan\n      if (analysisType != \"none\") {\n        for (var gp in gridOverlayPoints) {\n          final Offset offset = gp[\"offset\"];\n          final int cls = gp[\"class\"];\n          \n          Color c = Colors.grey;\n          if (analysisType == \"ndvi\") {\n            
+<truncated 30374 bytes>
+
+
+
+================================================================================
+FILE: step_4518_replace_file_content.txt
+================================================================================
+Description: "Insert YoloBoundingBoxPainter class inside main.dart to draw bounding boxes on the frontend."
+StartLine: 5882
+EndLine: 5892
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"  @override\n  bool shouldRepaint(covariant BoundaryPainter oldDelegate) {\n    return oldDelegate.points != points || \n           oldDelegate.isClosed != isClosed || \n           oldDelegate.hoverPoint != hoverPoint ||\n           oldDelegate.analysisType != analysisType ||\n           oldDelegate.gridOverlayPoints != gridOverlayPoints;\n  }\n}\n\nclass FarmBoundaryDrawingScreen extends StatefulWidget {"
+
+--- REPLACEMENT CONTENT ---
+"  @override\n  bool shouldRepaint(covariant BoundaryPainter oldDelegate) {\n    return oldDelegate.points != points || \n           oldDelegate.isClosed != isClosed || \n           oldDelegate.hoverPoint != hoverPoint ||\n           oldDelegate.analysisType != analysisType ||\n           oldDelegate.gridOverlayPoints != gridOverlayPoints;\n  }\n}\n\nclass YoloBoundingBoxPainter extends CustomPainter {\n  final List<dynamic> boxes;\n  final bool isUrdu;\n\n  YoloBoundingBoxPainter({required this.boxes, required this.isUrdu});\n\n  @override\n  void paint(Canvas canvas, Size size) {\n    for (var box in boxes) {\n      if (box == null) continue;\n      final double x = (box['x'] as num).toDouble() * size.width;\n      final double y = (box['y'] as num).toDouble() * size.height;\n      final double w = (box['width'] as num).toDouble() * size.width;\n      final double h = (box['height'] as num).toDouble() * size.height;\n      final String className = box['class_name'] ?? (isUrdu ? 'پودوں کی بیماری' : 'Disease');\n      final double confidence = (box['confidence'] as num).toDouble();\n\n      final paint = Paint()\n        ..color = Colors.redAccent\n        ..style = PaintingStyle.stroke\n        ..strokeWidth = 3.0;\n\n      final rect = Rect.fromLTWH(x, y, w, h);\n      canvas.drawRect(rect, paint);\n\n      final fillPaint = Paint()\n        ..color = Colors.redAccent.withOpacity(0.15)\n        ..style = PaintingStyle.fill;\n      canvas.drawRect(rect, fillPaint);\n\n      final textSpan = TextSpan(\n        text: \"$className (${(confidence * 100).toStringAsFixed(0)}%)\",\n        style: const TextStyle(\n          color: Colors.white,\n          fontSize: 10,\n          fontWeight: FontWeight.bold,\n          backgroundColor: Colors.redAccent,\n        ),\n      );\n\n      final textPainter = TextPainter(\n        text: textSpan,\n        textDirection: TextDirection.ltr,\n      );\n      textPainter.layout();\n\n      final labelPaint = Paint()\n        ..color = Colors.redAccent;\n\n      fina
+<truncated 571 bytes>
+
+
+
+================================================================================
+FILE: step_4524_replace_file_content.txt
+================================================================================
+Description: "Add state variables for YOLO bounding boxes and preset/network leaf preview URLs in main.dart."
+StartLine: 1380
+EndLine: 1381
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"  String _doctorCrop = \"Wheat (Sona-21)\";"
+
+--- REPLACEMENT CONTENT ---
+"  String _doctorCrop = \"Wheat (Sona-21)\";\n  List<dynamic> _boundingBoxes = [];\n  String? _previewImageUrl;"
+
+
+
+================================================================================
+FILE: step_4530_replace_file_content.txt
+================================================================================
+Description: "Update _uploadCropLeafFile in main.dart to decode bounding boxes and set simulated offline boxes."
+StartLine: 1491
+EndLine: 1617
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"        if (response.statusCode == 200) {\n          final data = json.decode(response.body);\n          setState(() {\n            _diagnoseStatus = \"Diagnostics Finished\";\n            _diagClass = data[\"highest_confidence_class\"];\n            _diagSeverity = data[\"severity_level\"];\n            _diagUrName = data[\"urdu_name\"] ?? \"\";\n            _diagRemedyEn = data[\"remediation_en\"];\n            _diagRemedyUr = data[\"remediation_ur\"];\n          });\n          return;\n        }\n      } catch (e) {\n        print(\"Diagnostics error: $e\");\n      }\n    }\n\n    // High-fidelity fallback/offline disease generator (Senior Dev standard)\n    await Future.delayed(const Duration(seconds: 1));\n    final lowerName = file.name.toLowerCase();\n    final lowerPath = file.path.toLowerCase();\n    final isHealthy = lowerName.contains(\"healthy\") || lowerPath.contains(\"healthy\");\n    \n    setState(() {\n      _diagnoseStatus = \"Diagnostics Finished\";\n      if (isHealthy) {\n        _diagClass = \"Healthy Crop Leaf\";\n        _diagSeverity = \"None\";\n        _diagUrName = \"تندرست پتہ (Healthy Leaf)\";\n        _diagRemedyUr = \"فصل کا پتہ بالکل تندرست ہے۔ کسی بھی سپرے کی ضرورت نہیں، معمول کے مطابق پانی اور کھاد جاری رکھیں۔\";\n        _diagRemedyEn = \"No chemical treatment required. Maintain standard watering and fertilizer intervals.\";\n      } else {\n        final crop = _doctorCrop.toLowerCase();\n        if (crop.contains(\"cotton\")) {\n          _diagClass = \"Cotton Leaf Curl Virus\";\n          _diagSeverity = \"Moderate\";\n          _diagUrName = \"کپاس کا پتا مروڑ وائرس\";\n          _diagRemedyUr = \"1۔ سفید مکھی کو کنٹرول کرنے کے لیے ایمیڈا کلوپرڈ کا سپرے کریں۔\";\n          _diagRemedyEn = \"1. Spray Imidacloprid to control Whitefly population.\";\n        } else if (crop.contains(\"rice\")) {\n          _diagClass = \"Rice
+<truncated 6000 bytes>
+
+--- REPLACEMENT CONTENT ---
+"        if (response.statusCode == 200) {\n          final data = json.decode(response.body);\n          setState(() {\n            _diagnoseStatus = \"Diagnostics Finished\";\n            _diagClass = data[\"highest_confidence_class\"];\n            _diagSeverity = data[\"severity_level\"];\n            _diagUrName = data[\"urdu_name\"] ?? \"\";\n            _diagRemedyEn = data[\"remediation_en\"];\n            _diagRemedyUr = data[\"remediation_ur\"];\n            _boundingBoxes = data[\"bounding_boxes\"] ?? [];\n          });\n          return;\n        }\n      } catch (e) {\n        print(\"Diagnostics error: $e\");\n      }\n    }\n\n    // High-fidelity fallback/offline disease generator (Senior Dev standard)\n    await Future.delayed(const Duration(seconds: 1));\n    final lowerName = file.name.toLowerCase();\n    final lowerPath = file.path.toLowerCase();\n    final isHealthy = lowerName.contains(\"healthy\") || lowerPath.contains(\"healthy\");\n    \n    setState(() {\n      _diagnoseStatus = \"Diagnostics Finished\";\n      if (isHealthy) {\n        _diagClass = \"Healthy Crop Leaf\";\n        _diagSeverity = \"None\";\n        _diagUrName = \"تندرست پتہ (Healthy Leaf)\";\n        _diagRemedyUr = \"فصل کا پتہ بالکل تندرست ہے۔ کسی بھی سپرے کی ضرورت نہیں، معمول کے مطابق پانی اور کھاد جاری رکھیں۔\";\n        _diagRemedyEn = \"No chemical treatment required. Maintain standard watering and fertilizer intervals.\";\n        _boundingBoxes = [];\n      } else {\n        final crop = _doctorCrop.toLowerCase();\n        if (crop.contains(\"cotton\")) {\n          _diagClass = \"Cotton Leaf Curl Virus\";\n          _diagSeverity = \"Moderate\";\n          _diagUrName = \"کپاس کا پتا مروڑ وائرس\";\n          _diagRemedyUr = \"1۔ سفید مکھی کو کنٹرول کرنے کے لیے ایمیڈا کلوپرڈ کا سپرے کریں۔\";\n          _diagRemedyEn = \"1. Spray Imidacloprid to control Whitefly 
+<truncated 6360 bytes>
+
+
+
+================================================================================
+FILE: step_4536_replace_file_content.txt
+================================================================================
+Description: "Update _simulateCropDoctorScan in main.dart to take imageUrl, handle preview states, and store bounding boxes."
+StartLine: 5152
+EndLine: 5191
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"  Future<void> _simulateCropDoctorScan(String simulatedFilename) async {\n    setState(() {\n      _diagnoseStatus = \"Ingesting leaf crop visual layers...\";\n      _diagClass = \"\";\n    });\n\n    if (!widget.isOffline) {\n      try {\n        final response = await _makeHttpPost(\n          \"${globalBackendUrl}/detect\",\n          {\"image\": simulatedFilename, \"crop_name\": _doctorCrop.split(' ')[0]} // API processes filename directly to generate DeepSeek pathology cards\n        );\n        if (response != null) {\n          final data = json.decode(response);\n          setState(() {\n            _diagnoseStatus = \"Diagnostics Finished\";\n            _diagClass = data[\"highest_confidence_class\"];\n            _diagSeverity = data[\"severity_level\"];\n            _diagUrName = data[\"urdu_name\"];\n            _diagRemedyEn = data[\"remediation_en\"];\n            _diagRemedyUr = data[\"remediation_ur\"];\n          });\n          return;\n        }\n      } catch (e) {\n        print(\"Crop doctor API failed: $e\");\n      }\n    }\n\n    // High-fidelity fallback/offline diagnostic\n    await Future.delayed(const Duration(seconds: 1));\n    setState(() {\n      _diagnoseStatus = \"Diagnostics Finished\";\n      _diagClass = \"Rice Blast (چاول کا جھلساؤ)\";\n      _diagSeverity = \"Severe\";\n      _diagUrName = \"چاول کا جھلساؤ\";\n      _diagRemedyEn = \"1. Keep water balanced. 2. Spray Tricyclazole 75 WP immediately.\";\n      _diagRemedyUr = \"1۔ پانی کھڑا نہ ہونے دیں۔ 2۔ ٹرائی سائیکلازول 75 ڈبلیو پی کا سپرے کریں۔\";\n    });"
+
+--- REPLACEMENT CONTENT ---
+"  Future<void> _simulateCropDoctorScan(String simulatedFilename, String imageUrl) async {\n    setState(() {\n      _pickedImagePath = null;\n      _previewImageUrl = imageUrl;\n      _diagnoseStatus = \"Ingesting leaf crop visual layers...\";\n      _diagClass = \"\";\n      _boundingBoxes = [];\n    });\n\n    if (!widget.isOffline) {\n      try {\n        final response = await _makeHttpPost(\n          \"${globalBackendUrl}/detect\",\n          {\"image\": simulatedFilename, \"crop_name\": _doctorCrop.split(' ')[0]} // API processes filename directly to generate DeepSeek pathology cards\n        );\n        if (response != null) {\n          final data = json.decode(response);\n          setState(() {\n            _diagnoseStatus = \"Diagnostics Finished\";\n            _diagClass = data[\"highest_confidence_class\"];\n            _diagSeverity = data[\"severity_level\"];\n            _diagUrName = data[\"urdu_name\"];\n            _diagRemedyEn = data[\"remediation_en\"];\n            _diagRemedyUr = data[\"remediation_ur\"];\n            _boundingBoxes = data[\"bounding_boxes\"] ?? [];\n          });\n          return;\n        }\n      } catch (e) {\n        print(\"Crop doctor API failed: $e\");\n      }\n    }\n\n    // High-fidelity fallback/offline diagnostic\n    await Future.delayed(const Duration(seconds: 1));\n    final isHealthy = simulatedFilename.contains(\"healthy\");\n    setState(() {\n      _diagnoseStatus = \"Diagnostics Finished\";\n      if (isHealthy) {\n        _diagClass = \"Healthy Crop Leaf\";\n        _diagSeverity = \"None\";\n        _diagUrName = \"تندرست پتہ (Healthy Leaf)\";\n        _diagRemedyEn = \"No chemical treatment required. Maintain standard watering and fertilizer intervals.\";\n        _diagRemedyUr = \"فصل کا پتہ بالکل تندرست ہے۔ کسی بھی سپرے کی ضرورت نہیں، معمول کے مطابق پانی اور کھاد جاری رکھیں۔\";\n        _boundingBoxes = [];\n      } else {\n        _diagClass = \"Rice Blast 
+<truncated 650 bytes>
+
+
+
+================================================================================
+FILE: step_4548_replace_file_content.txt
+================================================================================
+Description: "Update Crop Health Scanner preview Stack widget to support network previews, bounding boxes, and clean resets."
+StartLine: 2459
+EndLine: 2515
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"                    _pickedImagePath != null\n                        ? Image.file(\n                            File(_pickedImagePath!),\n                            fit: BoxFit.cover,\n                          )\n                        : buildPremiumNetworkImage(\n                            \"https://images.unsplash.com/photo-1592417817098-8f3d6eb19675?auto=format&fit=crop&q=80&w=600\",\n                            fit: BoxFit.cover,\n                            fallbackIcon: Icons.local_hospital,\n                          ),\n                    Container(\n                      decoration: BoxDecoration(\n                        gradient: LinearGradient(\n                          colors: [Colors.black.withOpacity(0.55), Colors.transparent, Colors.black.withOpacity(0.2)],\n                          begin: Alignment.topCenter,\n                          end: Alignment.bottomCenter,\n                        ),\n                      ),\n                    ),\n                    Positioned(\n                      top: 12,\n                      left: 12,\n                      child: Container(\n                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),\n                        decoration: BoxDecoration(\n                          color: GeoKisanTheme.primaryGreen.withOpacity(0.85),\n                          borderRadius: BorderRadius.circular(12),\n                        ),\n                        child: Text(\n                          widget.isUrdu ? \"فصل صحت اسکینر\" : \"Crop Health Scanner\",\n                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),\n                        ),\n                      ),\n                    ),\n                    if (_pickedImagePath != null)\n                      Positioned(\n                        top: 12,\n                        right: 12,\n                        child: GestureDetector(\n                          onTap: () {\n                            setS
+<truncated 856 bytes>
+
+--- REPLACEMENT CONTENT ---
+"                    _pickedImagePath != null\n                        ? Image.file(\n                            File(_pickedImagePath!),\n                            fit: BoxFit.cover,\n                          )\n                        : _previewImageUrl != null\n                            ? Image.network(\n                                _previewImageUrl!,\n                                fit: BoxFit.cover,\n                                errorBuilder: (context, error, stackTrace) => buildPremiumNetworkImage(\n                                  \"https://images.unsplash.com/photo-1592417817098-8f3d6eb19675?auto=format&fit=crop&q=80&w=600\",\n                                  fit: BoxFit.cover,\n                                  fallbackIcon: Icons.local_hospital,\n                                ),\n                              )\n                            : buildPremiumNetworkImage(\n                                \"https://images.unsplash.com/photo-1592417817098-8f3d6eb19675?auto=format&fit=crop&q=80&w=600\",\n                                fit: BoxFit.cover,\n                                fallbackIcon: Icons.local_hospital,\n                              ),\n                    Container(\n                      decoration: BoxDecoration(\n                        gradient: LinearGradient(\n                          colors: [Colors.black.withOpacity(0.55), Colors.transparent, Colors.black.withOpacity(0.2)],\n                          begin: Alignment.topCenter,\n                          end: Alignment.bottomCenter,\n                        ),\n                      ),\n                    ),\n                    if (_boundingBoxes.isNotEmpty)\n                      CustomPaint(\n                        painter: YoloBoundingBoxPainter(\n                          boxes: _boundingBoxes,\n                          isUrdu: widget.isUrdu,\n                        ),\n                      ),\n                    Positioned(\n                      top: 12,\n                      left: 12,\n              
+<truncated 1946 bytes>
+
+
+
+================================================================================
+FILE: step_4745_multi_replace_file_content.txt
+================================================================================
+Description: "Initialize VoiceService and related states in subsystem page and boundary drawing screen"
+StartLine: None
+EndLine: None
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+None
+
+--- REPLACEMENT CONTENT ---
+None
+
+
+--- REPLACEMENT CHUNKS ---
+
+Chunk 1:
+ERROR reading/parsing: 'str' object has no attribute 'get'
+
+
+================================================================================
+FILE: step_4745_multi_replace_file_content.txt
+================================================================================
+Description: "Initialize VoiceService and related states in subsystem page and boundary drawing screen"
+StartLine: None
+EndLine: None
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+None
+
+--- REPLACEMENT CONTENT ---
+None
+
+
+--- REPLACEMENT CHUNKS ---
+
+Chunk 1:
+ERROR reading/parsing: 'str' object has no attribute 'get'
+
+
+================================================================================
+FILE: step_4833_replace_file_content.txt
+================================================================================
+Description: "Integrate real STT and waveform sound level in case m7 mic button in main.dart"
+StartLine: 3134
+EndLine: 3187
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"                        // Interactive Mic Button\n                        GestureDetector(\n                          onTap: () {\n                            setState(() {\n                              _isNegotiationRecording = !_isNegotiationRecording;\n                            });\n\n                            if (_isNegotiationRecording) {\n                              _recordSeconds = 0;\n                              _detectedLanguage = \"\";\n                              _waveformTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {\n                                setState(() {\n                                  _waveformHeights = List.generate(24, (index) => 5.0 + math.Random().nextDouble() * 45.0);\n                                });\n                              });\n                              _recordSecondsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {\n                                setState(() {\n                                  _recordSeconds++;\n                                  if (_recordSeconds >= 30) {\n                                    // Auto stop at 30 seconds\n                                    _isNegotiationRecording = false;\n                                    _waveformTimer?.cancel();\n                                    _recordSecondsTimer?.cancel();\n                                    _processTranscriptionSimulation();\n                                  }\n                                });\n                              });\n                            } else {\n                              _waveformTimer?.cancel();\n                              _recordSecondsTimer?.cancel();\n                              _processTranscriptionSimulation();\n                            }\n                          },\n                          child: Container(\n                            width: 68,\n                            height: 68,\n                            decoration: BoxDecoration(\n                              color: _isNegotiationRec
+<truncated 833 bytes>
+
+--- REPLACEMENT CONTENT ---
+"                        // Interactive Mic Button\n                        GestureDetector(\n                          onTap: () async {\n                            if (_isNegotiationRecording) {\n                              _waveformTimer?.cancel();\n                              _recordSecondsTimer?.cancel();\n                              await _voiceService.stopListening();\n                              setState(() {\n                                _isNegotiationRecording = false;\n                              });\n                              if (_negotiationTextController.text.trim().isNotEmpty) {\n                                _submitNegotiationBargain();\n                              } else {\n                                _processTranscriptionSimulation();\n                              }\n                            } else {\n                              final ok = await _voiceService.initStt();\n                              if (!ok) {\n                                ScaffoldMessenger.of(context).showSnackBar(\n                                  const SnackBar(content: Text(\"Microphone or Speech Recognition unavailable.\")),\n                                );\n                                return;\n                              }\n                              setState(() {\n                                _isNegotiationRecording = true;\n                                _recordSeconds = 0;\n                                _detectedLanguage = _selectedNegotiationLanguage;\n                              });\n\n                              _waveformTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {\n                                // Baseline animation loop in case level is silent\n                                setState(() {\n                                  _waveformHeights = List.generate(24, (index) => 5.0 + math.Random().nextDouble() * 20.0);\n                                });\n                              });\n\n                              _recordSecondsTime
+<truncated 3400 bytes>
+
+
+
+================================================================================
+FILE: step_4998_replace_file_content.txt
+================================================================================
+Description: "Enable automatic audio feedback narration in Negotiation Coach when voice mode is active."
+StartLine: 5770
+EndLine: 5788
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"        setState(() {\n          _negotiationScore = data[\"score\"] ?? 70;\n          _negotiationFeedbackEn = data[\"feedback_en\"] ?? \"\";\n          _negotiationFeedbackUr = data[\"feedback_ur\"] ?? \"\";\n          _negotiationTipsEn = data[\"tips_en\"] ?? \"\";\n          _negotiationTipsUr = data[\"tips_ur\"] ?? \"\";\n          _negotiationTargetPrice = data[\"target_mandi_price\"] ?? \"\";\n          _isSTTTranscribing = false;\n        });"
+
+--- REPLACEMENT CONTENT ---
+"          setState(() {\n            _negotiationScore = data[\"score\"] ?? 70;\n            _negotiationFeedbackEn = data[\"feedback_en\"] ?? \"\";\n            _negotiationFeedbackUr = data[\"feedback_ur\"] ?? \"\";\n            _negotiationTipsEn = data[\"tips_en\"] ?? \"\";\n            _negotiationTipsUr = data[\"tips_ur\"] ?? \"\";\n            _negotiationTargetPrice = data[\"target_mandi_price\"] ?? \"\";\n            _isSTTTranscribing = false;\n          });\n          if (_isNegotiationVoiceMode) {\n            final textToSpeak = widget.isUrdu ? _negotiationFeedbackUr : _negotiationFeedbackEn;\n            _voiceService.speak(textToSpeak, widget.isUrdu ? 'ur' : 'en');\n          }"
+
+
+
+================================================================================
+FILE: step_5000_replace_file_content.txt
+================================================================================
+Description: "Implement a dynamic donut chart comparing Income and Expense, savings legend, transaction delete action, and table styling in the Seasonal Financial Ledger."
+StartLine: 3966
+EndLine: 4057
+TargetFile: "f:\\.Hackathon\\0.GeoFarmer\\frontend\\lib\\main.dart"
+
+--- TARGET CONTENT ---
+"      case 'm18': // Financial Ledger Editor\n        double totalExpense = _localLedgerHistory.where((l) => l.category == \"Expense\").fold(0.0, (sum, item) => sum + item.amount);\n        double totalIncome = _localLedgerHistory.where((l) => l.category == \"Income\").fold(0.0, (sum, item) => sum + item.amount);\n        double balance = totalIncome - totalExpense;\n\n        return Column(\n          children: [\n            Row(\n              mainAxisAlignment: MainAxisAlignment.spaceBetween,\n              children: [\n                Text(\n                  widget.isUrdu ? \"موسمیاتی مالیاتی کھاتا (لیجر)\" : \"Financial Ledger Manager\",\n                  style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 14, color: GeoKisanTheme.primaryGreen),\n                ),\n                Text(\n                  widget.isUrdu ? \"نیٹ بیلنس: $balance روپے\" : \"Net Balance: Rs. $balance\",\n                  style: TextStyle(color: balance >= 0 ? Colors.green : Colors.red, fontWeight: FontWeight.bold),\n                ),\n              ],\n            ),\n            const SizedBox(height: 12),\n            Card(\n              color: GeoKisanTheme.surfaceCream,\n              child: Padding(\n                padding: const EdgeInsets.all(12.0),\n                child: Column(\n                  children: [\n                    TextField(\n                      controller: _ledgerDescController,\n                      decoration: InputDecoration(\n                        labelText: widget.isUrdu ? \"خرچے یا آمدنی کی تفصیل\" : \"Transaction description\",\n                      ),\n                    ),\n                    Row(\n                      children: [\n                        Expanded(\n                          child: TextField(\n                            controller: _ledgerAmountController,\n                            decoration: const InputDecoration(labelText: \"Amount (Rs)\"),\n                            keyboardType: T
+<truncated 2438 bytes>
+
+--- REPLACEMENT CONTENT ---
+"      case 'm18': // Financial Ledger Editor\n        double totalExpense = _localLedgerHistory.where((l) => l.category == \"Expense\").fold(0.0, (sum, item) => sum + item.amount);\n        double totalIncome = _localLedgerHistory.where((l) => l.category == \"Income\").fold(0.0, (sum, item) => sum + item.amount);\n        double balance = totalIncome - totalExpense;\n\n        bool hasData = totalIncome > 0 || totalExpense > 0;\n        double incomePercentage = hasData ? (totalIncome / (totalIncome + totalExpense)) * 100 : 0.0;\n        double expensePercentage = hasData ? (totalExpense / (totalIncome + totalExpense)) * 100 : 0.0;\n\n        // Inline legend builder helper\n        final legendItem = (Color color, String label, double amount) {\n          return Row(\n            crossAxisAlignment: CrossAxisAlignment.start,\n            children: [\n              Container(\n                width: 10,\n                height: 10,\n                margin: const EdgeInsets.only(top: 3, right: 6),\n                decoration: BoxDecoration(shape: BoxShape.circle, color: color),\n              ),\n              Expanded(\n                child: Column(\n                  crossAxisAlignment: CrossAxisAlignment.start,\n                  children: [\n                    Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),\n                    Text(\n                      \"Rs. ${amount.toStringAsFixed(0)}\",\n                      style: TextStyle(\n                        fontSize: 11,\n                        fontWeight: FontWeight.bold,\n                        color: color,\n                      ),\n                    ),\n                  ],\n                ),\n              ),\n            ],\n          );\n        };\n\n        return Column(\n          children: [\n            Row(\n              mainAxisAlignment: MainAxisAlignment.spaceBetween,\n              children: [\n                Text(\n                  widget.isUrdu ? \"موسمیاتی مالیاتی کھاتا (لیجر)\" :
+<truncated 9889 bytes>
+
+
+
