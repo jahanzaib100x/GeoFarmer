@@ -174,7 +174,6 @@ Widget buildPremiumNetworkImage(String url, {double? height, double? width, BoxF
 // Sleek Dynamic Server Settings Dialog with Connectivity latencies
 void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback onSaved) {
   final controller = TextEditingController(text: globalBackendUrl);
-  final geminiController = TextEditingController(text: globalGeminiApiKey);
   bool isTesting = false;
   String pingResult = '';
   Color pingColor = Colors.grey;
@@ -216,23 +215,6 @@ void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback o
                   contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
                 keyboardType: TextInputType.url,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                isUrdu
-                    ? "گوگل جیمنی اے پی آئی کی درج کریں (اختیاری):"
-                    : "Enter custom Gemini API Key (optional):",
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: geminiController,
-                decoration: const InputDecoration(
-                  labelText: "Gemini API Key (AIzaSy...)",
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                ),
-                obscureText: true,
               ),
               const SizedBox(height: 12),
               if (pingResult.isNotEmpty) ...[
@@ -342,11 +324,9 @@ void showNetworkSettingsDialog(BuildContext context, bool isUrdu, VoidCallback o
           ElevatedButton(
             onPressed: () async {
               globalBackendUrl = controller.text.trim();
-              globalGeminiApiKey = geminiController.text.trim();
               try {
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('backend_url', globalBackendUrl);
-                await prefs.setString('gemini_api_key', globalGeminiApiKey);
               } catch (e) {
                 print("Failed to save SharedPreferences: $e");
               }
@@ -1814,40 +1794,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
         _isMandiLoading = false;
       });
     } catch (e) {
-      print("Failed fetching mandi prices via Gemini, trying DeepSeek: $e");
-      try {
-        final deepseekKey = await AIService.getDeepseekKey();
-        final res = await http.post(
-          Uri.parse("https://api.deepseek.com/chat/completions"),
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $deepseekKey"
-          },
-          body: json.encode({
-            "model": "deepseek-chat",
-            "messages": [
-              {"role": "user", "content": "Give today's average wholesale mandi prices in Pakistan in PKR per 40kg for Wheat, Basmati Rice, IRRI Rice, Cotton, Maize, Sugarcane, Tomato, Onion, Potato, Garlic, Chili. Return ONLY a JSON list of objects, each with fields: 'commodity' (string), 'price_pkr_per_maund' (number), 'unit' (string), 'trend' (string, 'up', 'down', or 'stable')."}
-            ]
-          }),
-        );
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          String cleanJson = data["choices"][0]["message"]["content"].trim();
-          if (cleanJson.contains("```json")) {
-            cleanJson = cleanJson.substring(cleanJson.indexOf("```json") + 7);
-            cleanJson = cleanJson.substring(0, cleanJson.indexOf("```"));
-          }
-          final List<dynamic> parsed = json.decode(cleanJson.trim());
-          setState(() {
-            _mandiPrices = parsed;
-            _mandiPricesLastUpdated = DateTime.now().toString().substring(0, 16);
-            _isMandiLoading = false;
-          });
-          return;
-        }
-      } catch (deepseekErr) {
-        print("DeepSeek fallback failed: $deepseekErr");
-      }
+      print("Failed fetching mandi prices via Gemini: $e");
       setState(() {
         _mandiPrices = [
           {"commodity": "Wheat", "price_pkr_per_maund": 4200, "unit": "40kg", "trend": "up"},
@@ -4332,19 +4279,8 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       try {
         reply = await ApiService.callGeminiChat(history, systemPrompt: systemPrompt);
       } catch (e) {
-        print("Gemini Chat failed: $e. Trying DeepSeek Chat...");
-        try {
-          final dsHistory = _localChatHistory.map((chat) {
-            return {
-              "role": chat["sender"] == "user" ? "user" : "assistant",
-              "text": chat["text"] ?? ""
-            };
-          }).toList();
-          reply = await ApiService.callDeepSeekChat(dsHistory, systemPrompt: systemPrompt);
-        } catch (de) {
-          print("DeepSeek Chat failed: $de");
-          rethrow;
-        }
+        print("Gemini Chat failed: $e.");
+        rethrow;
       }
 
       setState(() {
@@ -4376,7 +4312,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       try {
         final response = await _makeHttpPost(
           "${globalBackendUrl}/detect",
-          {"image": simulatedFilename, "crop_name": _doctorCrop.split(' ')[0]} // API processes filename directly to generate DeepSeek pathology cards
+          {"image": simulatedFilename, "crop_name": _doctorCrop.split(' ')[0]} // API processes filename directly to generate Gemini pathology cards
         );
         if (response != null) {
           final data = json.decode(response);

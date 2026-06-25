@@ -98,8 +98,7 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
   // --- Geocoding API ---
   Future<LatLng?> _geocodeAddress(String address) async {
     if (address.isEmpty) return null;
-    const key = "AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0";
-    final url = "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$key";
+    final url = "${widget.backendUrl}/api/maps/geocode?address=${Uri.encodeComponent(address)}";
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
@@ -133,8 +132,7 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
       return;
     }
     try {
-      const key = "AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0";
-      final url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(input)}&key=$key&components=country:pk";
+      final url = "${widget.backendUrl}/api/maps/autocomplete?input=${Uri.encodeComponent(input)}";
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
@@ -149,8 +147,7 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
 
   Future<void> _selectPlace(dynamic prediction) async {
     final placeId = prediction["place_id"];
-    const key = "AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0";
-    final url = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$key";
+    final url = "${widget.backendUrl}/api/maps/place-details?place_id=$placeId";
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
@@ -363,8 +360,7 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
       return;
     }
 
-    const mapsKey = "AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0";
-    final directionsUrl = "https://maps.googleapis.com/maps/api/directions/json?origin=${originLatLng.latitude},${originLatLng.longitude}&destination=${destLatLng.latitude},${destLatLng.longitude}&key=$mapsKey";
+    final directionsUrl = "${widget.backendUrl}/api/maps/directions?origin=${originLatLng.latitude},${originLatLng.longitude}&destination=${destLatLng.latitude},${destLatLng.longitude}";
 
     try {
       final response = await http.get(Uri.parse(directionsUrl));
@@ -490,13 +486,44 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
                       icon: const Icon(Icons.clear),
                       onPressed: () {
                         _searchController.clear();
+                        _searchPlaces("");
                       },
                     )
                   : null,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             ),
+            onChanged: _searchPlaces,
             onSubmitted: _geocodeAndMove,
           ),
+          if (_predictions.isNotEmpty)
+            Container(
+              height: 150,
+              margin: const EdgeInsets.only(top: 4),
+              decoration: BoxDecoration(
+                color: widget.isDarkMode ? Colors.grey[950] : Colors.white,
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              ),
+              child: ListView.builder(
+                itemCount: _predictions.length,
+                itemBuilder: (context, idx) {
+                  final pred = _predictions[idx];
+                  return ListTile(
+                    title: Text(
+                      pred["description"],
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: widget.isDarkMode ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    onTap: () {
+                      _selectPlace(pred);
+                    },
+                  );
+                },
+              ),
+            ),
           const SizedBox(height: 8),
 
           // Map view
@@ -588,53 +615,33 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
                       heroTag: "gee_fullscreen",
                       backgroundColor: Colors.white,
                       child: const Icon(Icons.fullscreen, color: GeoKisanTheme.primaryGreen),
-                      onPressed: () {
-                        Navigator.push(
+                      onPressed: () async {
+                        final updatedPoints = await Navigator.push<List<LatLng>>(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => FullScreenMapScreen(
-                              polygons: {
-                                if (_boundaryPoints.isNotEmpty)
-                                  Polygon(
-                                    polygonId: const PolygonId("gee_boundary"),
-                                    points: _boundaryPoints,
-                                    fillColor: _activeScanMode == "ndvi"
-                                        ? Colors.green.withOpacity(0.4)
-                                        : (_activeScanMode == "thermal"
-                                            ? Colors.redAccent.withOpacity(0.4)
-                                            : GeoKisanTheme.primaryGreen.withOpacity(0.2)),
-                                    strokeColor: _activeScanMode == "ndvi"
-                                        ? Colors.green
-                                        : (_activeScanMode == "thermal"
-                                            ? Colors.redAccent
-                                            : GeoKisanTheme.primaryGreen),
-                                    strokeWidth: 3,
-                                  ),
-                              },
-                              polylines: const {},
-                              markers: _boundaryPoints.asMap().entries.map((entry) {
-                                return Marker(
-                                  markerId: MarkerId("gee_pt_${entry.key}"),
-                                  position: entry.value,
-                                  icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-                                );
-                              }).toSet(),
-                              initialCameraPosition: CameraPosition(
-                                target: _boundaryPoints.isNotEmpty ? _boundaryPoints[0] : LatLng(initialLat, initialLng),
-                                zoom: 15,
-                              ),
-                              mapType: _isEarthEngineSatellite ? MapType.hybrid : MapType.normal,
-                              tileOverlays: {
-                                if (_geeTileUrl != null && _isEarthEngineSatellite)
-                                  TileOverlay(
-                                    tileOverlayId: const TileOverlayId("gee_ndvi_tile"),
-                                    tileProvider: NetworkTileProvider(urlTemplate: _geeTileUrl!),
-                                  ),
-                              },
+                            builder: (context) => FullScreenBoundaryEditor(
+                              initialPoints: _boundaryPoints,
                               isUrdu: widget.isUrdu,
+                              isDarkMode: widget.isDarkMode,
+                              initialMapType: _isEarthEngineSatellite ? MapType.hybrid : MapType.normal,
+                              initialLat: initialLat,
+                              initialLng: initialLng,
+                              geeTileUrl: _geeTileUrl,
+                              isEarthEngineSatellite: _isEarthEngineSatellite,
+                              activeScanMode: _activeScanMode,
+                              backendUrl: widget.backendUrl,
                             ),
                           ),
                         );
+                        if (updatedPoints != null) {
+                          setState(() {
+                            _boundaryPoints = updatedPoints;
+                            _calculatedArea = _calculatePolygonArea(_boundaryPoints);
+                            if (_boundaryPoints.length >= 3) {
+                              _analyzeBoundary();
+                            }
+                          });
+                        }
                       },
                     ),
                   ),
@@ -1180,5 +1187,327 @@ class NetworkTileProvider implements TileProvider {
       print('Error loading tile: $e');
     }
     return TileProvider.noTile;
+  }
+}
+
+class FullScreenBoundaryEditor extends StatefulWidget {
+  final List<LatLng> initialPoints;
+  final bool isUrdu;
+  final bool isDarkMode;
+  final MapType initialMapType;
+  final double initialLat;
+  final double initialLng;
+  final String? geeTileUrl;
+  final bool isEarthEngineSatellite;
+  final String activeScanMode;
+  final String backendUrl;
+
+  const FullScreenBoundaryEditor({
+    Key? key,
+    required this.initialPoints,
+    required this.isUrdu,
+    required this.isDarkMode,
+    required this.initialMapType,
+    required this.initialLat,
+    required this.initialLng,
+    this.geeTileUrl,
+    required this.isEarthEngineSatellite,
+    required this.activeScanMode,
+    required this.backendUrl,
+  }) : super(key: key);
+
+  @override
+  State<FullScreenBoundaryEditor> createState() => _FullScreenBoundaryEditorState();
+}
+
+class _FullScreenBoundaryEditorState extends State<FullScreenBoundaryEditor> {
+  late List<LatLng> _points;
+  late MapType _mapType;
+  bool _isDrawing = true;
+  GoogleMapController? _mapController;
+  final TextEditingController _searchController = TextEditingController();
+  List<dynamic> _predictions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _points = List.from(widget.initialPoints);
+    _mapType = widget.initialMapType;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  double _calculateArea(List<LatLng> pts) {
+    if (pts.length < 3) return 0.0;
+    double area = 0.0;
+    const double latToMeters = 111132.92;
+    int j = pts.length - 1;
+    for (int i = 0; i < pts.length; i++) {
+      double latRadI = pts[i].latitude * math.pi / 180.0;
+      double latRadJ = pts[j].latitude * math.pi / 180.0;
+      double cosLat = math.cos((latRadI + latRadJ) / 2.0);
+      double lngToMeters = 111319.9 * cosLat;
+
+      double x1 = pts[i].longitude * lngToMeters;
+      double y1 = pts[i].latitude * latToMeters;
+      double x2 = pts[j].longitude * lngToMeters;
+      double y2 = pts[j].latitude * latToMeters;
+
+      area += (x1 * y2) - (x2 * y1);
+      j = i;
+    }
+    double areaInSqMeters = (area / 2.0).abs();
+    return areaInSqMeters / 4046.86;
+  }
+
+  Future<void> _searchPlaces(String input) async {
+    if (input.isEmpty) {
+      setState(() => _predictions = []);
+      return;
+    }
+    try {
+      final url = "${widget.backendUrl}/api/maps/autocomplete?input=${Uri.encodeComponent(input)}";
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        setState(() {
+          _predictions = data["predictions"] ?? [];
+        });
+      }
+    } catch (e) {
+      print("Autocomplete failed: $e");
+    }
+  }
+
+  Future<void> _selectPlace(dynamic prediction) async {
+    final placeId = prediction["place_id"];
+    final url = "${widget.backendUrl}/api/maps/place-details?place_id=$placeId";
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final lat = data["result"]["geometry"]["location"]["lat"];
+        final lng = data["result"]["geometry"]["location"]["lng"];
+        setState(() {
+          _predictions = [];
+          _searchController.text = prediction["description"];
+        });
+        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 17));
+      }
+    } catch (e) {
+      print("Place details failed: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double area = _calculateArea(_points);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.isUrdu ? "حدود کا انتخاب" : "Fullscreen Boundary Editor"),
+        backgroundColor: const Color(0xFF4A7C2F),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check, size: 28),
+            onPressed: () {
+              Navigator.pop(context, _points);
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: _points.isNotEmpty
+                  ? _points[0]
+                  : LatLng(widget.initialLat, widget.initialLng),
+              zoom: 16,
+            ),
+            mapType: _mapType,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            onMapCreated: (ctrl) => _mapController = ctrl,
+            onTap: (latLng) {
+              if (_isDrawing) {
+                setState(() {
+                  _points.add(latLng);
+                });
+              }
+            },
+            polygons: {
+              if (_points.isNotEmpty)
+                Polygon(
+                  polygonId: const PolygonId("gee_boundary_fs"),
+                  points: _points,
+                  fillColor: widget.activeScanMode == "ndvi"
+                      ? Colors.green.withOpacity(0.4)
+                      : (widget.activeScanMode == "thermal"
+                          ? Colors.redAccent.withOpacity(0.4)
+                          : const Color(0xFF4A7C2F).withOpacity(0.2)),
+                  strokeColor: widget.activeScanMode == "ndvi"
+                      ? Colors.green
+                      : (widget.activeScanMode == "thermal"
+                          ? Colors.redAccent
+                          : const Color(0xFF4A7C2F)),
+                  strokeWidth: 3,
+                ),
+            },
+            markers: _points.asMap().entries.map((entry) {
+              return Marker(
+                markerId: MarkerId("gee_pt_fs_${entry.key}"),
+                position: entry.value,
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+              );
+            }).toSet(),
+            tileOverlays: {
+              if (widget.geeTileUrl != null && widget.isEarthEngineSatellite)
+                TileOverlay(
+                  tileOverlayId: const TileOverlayId("gee_ndvi_tile_fs"),
+                  tileProvider: NetworkTileProvider(urlTemplate: widget.geeTileUrl!),
+                ),
+            },
+          ),
+
+          // Search Bar Overlay at Top
+          Positioned(
+            top: 10,
+            left: 10,
+            right: 10,
+            child: Column(
+              children: [
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: widget.isUrdu ? "مقام تلاش کریں..." : "Search farm location...",
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF4A7C2F)),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                _searchPlaces("");
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    ),
+                    onChanged: _searchPlaces,
+                  ),
+                ),
+                if (_predictions.isNotEmpty)
+                  Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      height: 180,
+                      child: ListView.builder(
+                        itemCount: _predictions.length,
+                        itemBuilder: (context, idx) {
+                          final pred = _predictions[idx];
+                          return ListTile(
+                            title: Text(pred["description"], style: const TextStyle(fontSize: 12)),
+                            onTap: () => _selectPlace(pred),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Floating controls overlay at bottom
+          Positioned(
+            bottom: 20,
+            left: 16,
+            right: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Info Banner
+                Card(
+                  color: const Color(0xFF4A7C2F),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "${widget.isUrdu ? 'رقبہ' : 'Area'}: ${area.toStringAsFixed(2)} ${widget.isUrdu ? 'ایکڑ' : 'Acres'}",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        Text(
+                          _points.length < 3
+                              ? (widget.isUrdu ? "کم از کم 3 پوائنٹس منتخب کریں" : "Place min 3 points")
+                              : (widget.isUrdu ? "پوائنٹس محفوظ کریں" : "Ready to Save"),
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Action Buttons Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    FloatingActionButton.extended(
+                      heroTag: "fs_draw_toggle",
+                      onPressed: () {
+                        setState(() {
+                          _isDrawing = !_isDrawing;
+                        });
+                      },
+                      label: Text(_isDrawing
+                          ? (widget.isUrdu ? "ڈرائنگ آن" : "Drawing Active")
+                          : (widget.isUrdu ? "ڈرائنگ آف" : "Panning Mode")),
+                      icon: Icon(_isDrawing ? Icons.edit : Icons.pan_tool),
+                      backgroundColor: _isDrawing ? const Color(0xFF4A7C2F) : Colors.amber[700],
+                    ),
+                    Row(
+                      children: [
+                        if (_points.isNotEmpty)
+                          FloatingActionButton.small(
+                            heroTag: "fs_undo",
+                            onPressed: () {
+                              setState(() {
+                                _points.removeLast();
+                              });
+                            },
+                            child: const Icon(Icons.undo),
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF4A7C2F),
+                          ),
+                        const SizedBox(width: 8),
+                        FloatingActionButton.small(
+                          heroTag: "fs_clear",
+                          onPressed: () {
+                            setState(() {
+                              _points.clear();
+                            });
+                          },
+                          child: const Icon(Icons.delete, color: Colors.red),
+                          backgroundColor: Colors.white,
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

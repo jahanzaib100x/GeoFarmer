@@ -134,6 +134,15 @@ void loop() {
         Serial.println(response_code);
         Serial.print("Payload response content: ");
         Serial.println(server_response);
+        
+        // Wirelessly trigger physical irrigation pump relay pin based on server command
+        if (server_response.indexOf("\"pump_active\":\"true\"") != -1) {
+          digitalWrite(PUMP_RELAY_PIN, HIGH);
+          Serial.println("[PUMP RELAY] Forced to HIGH (ON) by server command.");
+        } else {
+          digitalWrite(PUMP_RELAY_PIN, LOW);
+          Serial.println("[PUMP RELAY] Forced to LOW (OFF) by server command.");
+        }
       } else {
         Serial.print("POST connection failure error code: ");
         Serial.println(http.errorToString(response_code).c_str());

@@ -166,7 +166,7 @@ def root_welcome():
                 <div>
                     <div class="gemini-badge">{gemini_status_text}</div>
                 </div>
-                <p>Welcome back! The FastAPI server is successfully initialized and connected to the paid DeepSeek AI engine.</p>
+                <p>Welcome back! The FastAPI server is successfully initialized and connected to the Google Gemini AI engine.</p>
                 <div class="endpoints">
                     <strong>📡 Active API Endpoints:</strong>
                     <ul>
@@ -201,8 +201,7 @@ disease_history: List[Dict[str, Any]] = []
 # Mock or local implementation for Firebase database connection fallback
 firebase_initialized = False
 
-# Paid DeepSeek API key loaded from environment variables (fallback for local dev)
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
 # Try to initialize Gemini Generative AI for multimodal vision diagnostics
 gemini_ready = False
@@ -220,39 +219,7 @@ if GEMINI_API_KEY:
         print(f"[Gemini] Failed to initialize Gemini API: {ge}")
         gemini_last_error = f"Initialization error: {ge}"
 
-def call_deepseek_api(system_prompt: str, user_prompt: str, api_key: Optional[str] = None) -> str:
-    """
-    Synchronous helper to execute prompt requests against the paid DeepSeek chat completion API.
-    """
-    key_to_use = api_key or os.environ.get("DEEPSEEK_API_KEY")
-    if not key_to_use:
-        return ""
-    import requests as http_req
-    url = "https://api.deepseek.com/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {key_to_use}"
-    }
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.4,
-        "max_tokens": 1200,
-        "stream": False
-    }
-    try:
-        response = http_req.post(url, headers=headers, json=payload, timeout=12)
-        if response.status_code == 200:
-            res_json = response.json()
-            return res_json["choices"][0]["message"]["content"].strip()
-        else:
-            print(f"[DeepSeek] Error status code {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"[DeepSeek] Exception encountered: {e}")
-    return ""
+# (DeepSeek API helper removed)
 
 def call_gemini_api(system_prompt: str, user_prompt: str, api_key: Optional[str] = None) -> str:
     """
@@ -334,7 +301,8 @@ async def post_telemetry(
         }
     return {
         "status": "success",
-        "message": "Telemetry received and updated successfully"
+        "message": "Telemetry received and updated successfully",
+        "pump_active": "true" if pump_active else "false"
     }
 
 @app.get("/api/pump")
@@ -353,6 +321,127 @@ def set_pump_state(active: bool):
     pump_active = active
     print(f"[Pump] Command received. State updated to: {pump_active}")
     return {"status": "success", "pump_active": pump_active}
+
+# --- Google Maps Proxy Endpoints ---
+
+@app.get("/api/maps/autocomplete")
+def maps_autocomplete(input: str):
+    if not GOOGLE_MAPS_API_KEY:
+        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    import requests
+    url = f"https://maps.googleapis.com/maps/api/place/autocomplete/json?input={requests.utils.quote(input)}&key={GOOGLE_MAPS_API_KEY}&components=country:pk"
+    try:
+        response = requests.get(url, timeout=10)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/maps/place-details")
+def maps_place_details(place_id: str):
+    if not GOOGLE_MAPS_API_KEY:
+        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    import requests
+    url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&key={GOOGLE_MAPS_API_KEY}"
+    try:
+        response = requests.get(url, timeout=10)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/maps/geocode")
+def maps_geocode(address: str):
+    if not GOOGLE_MAPS_API_KEY:
+        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    import requests
+    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={requests.utils.quote(address)}&key={GOOGLE_MAPS_API_KEY}"
+    try:
+        response = requests.get(url, timeout=10)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/maps/directions")
+def maps_directions(origin: str, destination: str):
+    if not GOOGLE_MAPS_API_KEY:
+        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    import requests
+    url = f"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&key={GOOGLE_MAPS_API_KEY}"
+    try:
+        response = requests.get(url, timeout=10)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Server-side AI Proxy Endpoints ---
+
+class AskRequest(BaseModel):
+    prompt: str
+
+@app.post("/api/ai/ask")
+def ai_ask(payload: AskRequest):
+    system_prompt = "You are GeoFarmer AI, a master agricultural assistant for Pakistani farmers."
+    reply = ""
+    if gemini_ready or os.environ.get("GEMINI_API_KEY"):
+        reply = call_gemini_api(system_prompt, payload.prompt)
+    if not reply:
+        reply = "I'm sorry, I'm currently running in offline simulation mode and couldn't process your request via AI. Please check your API key configuration."
+    return {"reply": reply}
+
+@app.post("/api/ai/ask-image")
+async def ai_ask_image(
+    prompt: str = Form(...),
+    image: UploadFile = File(...)
+):
+    image_bytes = await image.read()
+    api_key_to_use = os.environ.get("GEMINI_API_KEY")
+    if api_key_to_use:
+        try:
+            import google.generativeai as genai
+            from PIL import Image
+            import io
+            pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            genai.configure(api_key=api_key_to_use)
+            local_gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+            response = local_gemini_model.generate_content([prompt, pil_img])
+            return {"reply": response.text.strip()}
+        except Exception as e:
+            print(f"[ask-image] Gemini error: {e}")
+            
+    return {"reply": "Could not analyze the image. Please verify Gemini API Key configuration."}
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatHistoryRequest(BaseModel):
+    history: List[ChatMessage]
+    system_prompt: Optional[str] = None
+
+@app.post("/api/ai/chat-history")
+def ai_chat_history(payload: ChatHistoryRequest):
+    system_prompt = payload.system_prompt or "You are GeoFarmer AI, a master agricultural assistant for Pakistani farmers."
+    
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=gemini_key)
+            contents = []
+            for msg in payload.history:
+                role = "user" if msg.role == "user" else "model"
+                contents.append({
+                    "role": role,
+                    "parts": [{"text": msg.content}]
+                })
+            model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=system_prompt)
+            response = model.generate_content(contents)
+            if response and response.text:
+                return {"reply": response.text.strip()}
+        except Exception as e:
+            print(f"[chat-history] Gemini Chat error: {e}")
+            
+    last_msg = payload.history[-1].content if payload.history else ""
+    return {"reply": f"Hi! Running in local offline mode. You asked: {last_msg}"}
 
 @app.get("/api/debug/gemini")
 def debug_gemini():
@@ -779,13 +868,12 @@ def is_leaf_image(image_bytes: bytes) -> bool:
 async def detect_disease(
     image: UploadFile = File(...),
     crop_name: Optional[str] = Form(None),
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Ingests a crop leaf image via multipart/form-data.
     Executes a real-time pixel analysis on the custom YOLOv8 ONNX model with crop name filtering,
-    then constructs a rich, bilingual diagnostic report using DeepSeek/Gemini.
+    then constructs a rich, bilingual diagnostic report using Gemini.
     """
     filename = image.filename
     filename_lower = filename.lower()
@@ -1050,8 +1138,8 @@ async def detect_disease(
     }}
     """
     
-    # Attempt to fetch high-fidelity AI diagnostic from paid DeepSeek
-    api_response = call_deepseek_api(system_prompt, user_prompt, api_key=x_deepseek_api_key)
+    # Attempt to fetch high-fidelity AI diagnostic from Gemini
+    api_response = call_gemini_api(system_prompt, user_prompt, api_key=api_key_to_use)
     
     if api_response:
         try:
@@ -1062,7 +1150,7 @@ async def detect_disease(
             disease_history.append(diagnostic_data)
             return diagnostic_data
         except Exception as json_err:
-            print(f"Failed parsing DeepSeek JSON output: {json_err}. Raw output was: {api_response}")
+            print(f"Failed parsing Gemini JSON output: {json_err}. Raw output was: {api_response}")
             
     # Hardcoded robust expert simulation fallback
     severity = "Moderate" if disease != "Healthy Crop Leaf" else "Healthy"
@@ -1143,8 +1231,7 @@ class TranslateRequest(BaseModel):
 @app.post("/api/ai/translate")
 def ai_translate(
     payload: TranslateRequest,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Translates agricultural texts or user inputs across English and Pakistani regional dialects:
@@ -1187,15 +1274,7 @@ def ai_translate(
                 "source": "Gemini translation"
             }
             
-    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-    if deepseek_key:
-        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
-        if api_response:
-            return {
-                "status": "success",
-                "translated_text": api_response.strip(),
-                "source": "DeepSeek translation"
-            }
+    # (DeepSeek fallback removed)
             
     text_lower = text.lower().strip()
     offline_translations = {
@@ -1235,11 +1314,10 @@ def ai_translate(
 @app.post("/api/ai/chat")
 def ai_chat(
     payload: ChatRequest,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
-    Exposes an agricultural chatbot endpoint. Integrates Gemini API (with DeepSeek fallback)
+    Exposes an agricultural chatbot endpoint. Integrates Gemini API
     to deliver real-time, bilingual advice on farming, irrigation, and crop protection.
     Features robust language detection, handling Urdu, English, and Roman Urdu seamlessly.
     """
@@ -1267,16 +1345,7 @@ def ai_chat(
                 "source": "Gemini primary engine"
             }
             
-    # Fallback to DeepSeek
-    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-    if deepseek_key:
-        api_response = call_deepseek_api(system_prompt, prompt, api_key=deepseek_key)
-        if api_response:
-            return {
-                "status": "success",
-                "reply": api_response,
-                "source": "DeepSeek fallback engine"
-            }
+    # (DeepSeek fallback removed)
         
     # Offline Local Agriculture Experts Fallback
     prompt_lower = prompt.lower()
@@ -1313,11 +1382,10 @@ class YieldRequest(BaseModel):
 @app.post("/api/ai/yield")
 def predict_yield(
     payload: YieldRequest,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
-    Leverages DeepSeek to calculate yield forecast outputs based on custom land measurements and telemetry.
+    Leverages Gemini to calculate yield forecast outputs based on custom land measurements and telemetry.
     """
     system_prompt = (
         "You are a master agronomist and yield forecaster specializing in Pakistani agriculture. "
@@ -1351,15 +1419,12 @@ def predict_yield(
     if gemini_key:
         api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
         
-    if not api_response:
-        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
     if api_response:
         try:
             cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
             return json.loads(cleaned_resp)
         except Exception as e:
-            print(f"Failed parsing DeepSeek yield JSON: {e}")
+            print(f"Failed parsing Gemini yield JSON: {e}")
             
     # Highly stable local yield engine fallback
     maunds_per_acre = 42.0
@@ -1381,11 +1446,10 @@ class NegotiationRequest(BaseModel):
 @app.post("/api/ai/negotiation")
 def evaluate_negotiation(
     payload: NegotiationRequest,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
-    Gemini-powered (with DeepSeek fallback) audio/text bargaining negotiation coach. Evaluates farmer dialogues in Urdu or Roman Urdu.
+    Gemini-powered audio/text bargaining negotiation coach. Evaluates farmer dialogues in Urdu or Roman Urdu.
     """
     system_prompt = (
         "You are an expert Mandi trading negotiation coach and senior commission agent (Aroti) advisor in Pakistan. "
@@ -1421,16 +1485,7 @@ def evaluate_negotiation(
             except Exception as e:
                 print(f"Failed parsing Gemini negotiation JSON: {e}")
                 
-    # Fallback to DeepSeek
-    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-    if deepseek_key:
-        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
-        if api_response:
-            try:
-                cleaned_resp = api_response.replace("```json", "").replace("```", "").strip()
-                return json.loads(cleaned_resp)
-            except Exception as e:
-                print(f"Failed parsing DeepSeek negotiation JSON: {e}")
+    # (DeepSeek fallback removed)
             
     return {
         "score": 70,
@@ -1584,8 +1639,7 @@ def get_drone_stress(lat: float = 30.1575, lon: float = 71.5249):
 @app.get("/api/mandi/prices")
 def get_mandi_prices(
     search: str = "",
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Returns live wholesale commodity indexes from major Pakistani Mandis.
@@ -1608,10 +1662,7 @@ def get_mandi_prices(
     if gemini_key:
         api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
         
-    if not api_response:
-        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-        if deepseek_key:
-            api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+    # (DeepSeek fallback removed)
             
     if api_response:
         try:
@@ -1643,8 +1694,7 @@ def get_mandi_prices(
 
 @app.get("/api/ai/news")
 def get_ai_news(
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Returns AI-curated daily agricultural news feed tailored for Pakistani farmers.
@@ -1664,10 +1714,7 @@ def get_ai_news(
     if gemini_key:
         api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
         
-    if not api_response:
-        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-        if deepseek_key:
-            api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
+    # (DeepSeek fallback removed)
             
     if api_response:
         try:
@@ -1692,12 +1739,11 @@ def get_ai_news(
 def get_weather(
     lat: float = 30.1575,
     lon: float = 71.5249,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Ingests geographical coordinates and pulls live forecast lists.
-    Retrieves weather JSON (Gemini -> DeepSeek -> GEE ERA5 hourly surface temperature -> simulated meteorology fallback).
+    Retrieves weather JSON (Gemini -> GEE ERA5 hourly surface temperature -> simulated meteorology fallback).
     """
     import random
     
@@ -1736,18 +1782,7 @@ def get_weather(
             except Exception as e:
                 print(f"[Weather] Failed parsing Gemini weather: {e}")
                 
-    # 2. Try DeepSeek API
-    if not current_summary:
-        deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
-        if deepseek_key:
-            api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
-            if api_response:
-                try:
-                    cleaned = api_response.replace("```json", "").replace("```", "").strip()
-                    current_summary = json.loads(cleaned)
-                    source = "DeepSeek AI Weather Summary"
-                except Exception as e:
-                    print(f"[Weather] Failed parsing DeepSeek weather: {e}")
+    # (DeepSeek fallback removed)
                     
     # 3. Try GEE ERA5 Reanalysis
     if not current_summary and gee_ready:
@@ -1838,8 +1873,7 @@ class GeeRequest(BaseModel):
 @app.post("/api/ai/gee/ndvi")
 def get_gee_ndvi(
     payload: GeeRequest,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Retrieves Google Earth Engine NDVI analysis report.
@@ -1944,13 +1978,10 @@ def get_gee_ndvi(
     report_ur = ""
     
     gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
-    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
     
     api_response = None
     if gemini_key:
         api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
-    if not api_response and deepseek_key:
-        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
         
     if api_response:
         try:
@@ -1982,8 +2013,7 @@ def get_gee_ndvi(
 @app.post("/api/ai/gee/thermal")
 def get_gee_thermal(
     payload: GeeRequest,
-    x_gemini_api_key: Optional[str] = Header(None),
-    x_deepseek_api_key: Optional[str] = Header(None)
+    x_gemini_api_key: Optional[str] = Header(None)
 ):
     """
     Retrieves Google Earth Engine Thermal analysis report.
@@ -2092,13 +2122,10 @@ def get_gee_thermal(
     report_ur = ""
     
     gemini_key = x_gemini_api_key or os.environ.get("GEMINI_API_KEY")
-    deepseek_key = x_deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
     
     api_response = None
     if gemini_key:
         api_response = call_gemini_api(system_prompt, user_prompt, api_key=gemini_key)
-    if not api_response and deepseek_key:
-        api_response = call_deepseek_api(system_prompt, user_prompt, api_key=deepseek_key)
         
     if api_response:
         try:

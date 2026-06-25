@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../theme/geokisan_theme.dart';
+import '../main.dart';
 
 class InteractiveGoogleMapSelector extends StatefulWidget {
   final double initialLat;
@@ -44,8 +45,7 @@ class _InteractiveGoogleMapSelectorState extends State<InteractiveGoogleMapSelec
       return;
     }
     try {
-      final key = "AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0";
-      final url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(input)}&key=$key&components=country:pk";
+      final url = "${globalBackendUrl}/api/maps/autocomplete?input=${Uri.encodeComponent(input)}";
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
@@ -60,8 +60,7 @@ class _InteractiveGoogleMapSelectorState extends State<InteractiveGoogleMapSelec
 
   Future<void> _selectPlace(dynamic prediction) async {
     final placeId = prediction["place_id"];
-    final key = "AIzaSyDfPBczkgH0rSxV9EDm8WM33yfN_FFfLF0";
-    final url = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$key";
+    final url = "${globalBackendUrl}/api/maps/place-details?place_id=$placeId";
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
