@@ -34,21 +34,50 @@ from typing import Dict, Any, List, Optional
 gee_ready = False
 try:
     print("[GEE] Initializing Google Earth Engine...")
-    gee_creds_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geofarmer-498712-c28893c5b1e9.json")
+    gee_creds_v2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geofarmer-v2-c591674c09dd.json")
+    gee_creds_old = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geofarmer-498712-c28893c5b1e9.json")
     gee_key_env = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
-    if os.path.exists(gee_creds_path):
-        credentials = Credentials.from_service_account_file(gee_creds_path, scopes=["https://www.googleapis.com/auth/earthengine"])
-        ee.Initialize(credentials)
-        gee_ready = True
-        print("[GEE] Successfully initialized Google Earth Engine from local credentials file!")
-    elif gee_key_env:
-        key_data = json.loads(gee_key_env)
-        credentials = Credentials.from_service_account_info(key_data, scopes=["https://www.googleapis.com/auth/earthengine"])
-        ee.Initialize(credentials)
-        gee_ready = True
-        print("[GEE] Successfully initialized Google Earth Engine from environment variable!")
-    else:
-        print(f"[GEE] Credentials file not found and GEE_SERVICE_ACCOUNT_KEY env var not set. Running without Earth Engine.")
+    
+    initialized = False
+    
+    # 1. Try the new project credentials first
+    if os.path.exists(gee_creds_v2):
+        try:
+            print("[GEE] Trying to initialize Earth Engine with geofarmer-v2 credentials...")
+            credentials = Credentials.from_service_account_file(gee_creds_v2, scopes=["https://www.googleapis.com/auth/earthengine"])
+            ee.Initialize(credentials)
+            gee_ready = True
+            initialized = True
+            print("[GEE] Successfully initialized Google Earth Engine from geofarmer-v2 credentials file!")
+        except Exception as v2_err:
+            print(f"[GEE] Failed to initialize with geofarmer-v2 key: {v2_err}")
+            
+    # 2. Try the old credentials as a fallback
+    if not initialized and os.path.exists(gee_creds_old):
+        try:
+            print("[GEE] Trying to initialize Earth Engine with old credentials...")
+            credentials = Credentials.from_service_account_file(gee_creds_old, scopes=["https://www.googleapis.com/auth/earthengine"])
+            ee.Initialize(credentials)
+            gee_ready = True
+            initialized = True
+            print("[GEE] Successfully initialized Google Earth Engine from old credentials file!")
+        except Exception as old_err:
+            print(f"[GEE] Failed to initialize with old key: {old_err}")
+            
+    # 3. Try environment variable fallback
+    if not initialized and gee_key_env:
+        try:
+            key_data = json.loads(gee_key_env)
+            credentials = Credentials.from_service_account_info(key_data, scopes=["https://www.googleapis.com/auth/earthengine"])
+            ee.Initialize(credentials)
+            gee_ready = True
+            initialized = True
+            print("[GEE] Successfully initialized Google Earth Engine from environment variable!")
+        except Exception as env_err:
+            print(f"[GEE] Failed to initialize with environment key: {env_err}")
+            
+    if not initialized:
+        print("[GEE] Running without Earth Engine (Simulation Mode active).")
 except Exception as e:
     print(f"[GEE] Failed to initialize Earth Engine: {e}")
 from typing import Dict, Any, List, Optional
