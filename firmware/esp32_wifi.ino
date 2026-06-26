@@ -6,49 +6,73 @@
  * ----------------------------
  * 1. Mount the ESP32 development board on the EXTREME LEFT side of your standard breadboard.
  *    This preserves physical clearance on the right side for the micro-USB/USB-C connection.
- * 2. Relay controller pin (PUMP_RELAY_PIN) is wired to GPIO 23.
- * 3. Analog Soil Volumetric Moisture Sensor is wired to GPIO 34 (ADC1_CH6).
- * 4. Ambient Atmospheric DHT Sensor is wired to GPIO 35.
+ * 2. Relay controller pin (PUMP_RELAY_PIN) is wired to GPIO 5 (D5).
+ * 3. Analog Soil Volumetric Moisture Sensor 1 is wired to GPIO 34 (D34).
+ * 4. Analog Soil Volumetric Moisture Sensor 2 is wired to GPIO 35 (D35).
+ * 5. Ambient Atmospheric DHT22 Sensor is wired to GPIO 4 (D4).
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <DHT.h>
 
 // Direct inclusion of the standard C++ namespace in global scope per engineering instructions
 using namespace std;
 
-// Physical GPIO Hardware Pin Assignment Mapping
-const int PUMP_RELAY_PIN = 23;      // Digital line governing the water pump control relay
-const int SOIL_SENSOR_PIN = 34;     // Volumetric soil moisture sensor analog ADC input
-const int AIR_TEMP_PIN = 35;        // Digital sensor input line for ambient telemetry
+// --- HARDWARE CONFIGURATION ---
+const int PUMP_RELAY_PIN = 5;       // Digital line governing the water pump control relay (wired to D5)
+const int SOIL_SENSOR_1_PIN = 34;   // Volumetric soil moisture sensor 1 (wired to D34)
+const int SOIL_SENSOR_2_PIN = 35;   // Volumetric soil moisture sensor 2 (wired to D35)
+const int DHT_PIN = 4;              // DHT22 temperature and humidity sensor data line (wired to D4)
 
-// Local network security configurations
+// --- RELAY ACTIVE STATE CONFIGURATION ---
+// Set this to true if your relay turns ON when writing LOW (most common for Arduino relay modules).
+// Set this to false if your relay turns ON when writing HIGH.
+const bool RELAY_ACTIVE_LOW = true; 
+
+// --- WIFI CONFIGURATION ---
 const char* WIFI_SSID = "GeoFarmer_Kisan_AP";
 const char* WIFI_PASS = "KisanConnectionSecurePass";
 
-// Target FastAPI REST Telemetry Route endpoint
+// --- API SERVER CONFIGURATION ---
+// Change 192.168.1.100 to the actual local IP address of your running FastAPI server.
 const char* SERVER_ENDPOINT = "http://192.168.1.100:8000/api/telemetry";
 
 // Core System Timing Configurations
 const unsigned long POLL_INTERVAL_MS = 5000; // Ingestion loop frequency (5 seconds)
 unsigned long last_post_time = 0;
 
+// Initialize DHT Sensor
+DHT dht(DHT_PIN, DHT22);
+
+// Helper function to set the pump state correctly based on relay polarity
+void setPumpRelay(bool turnOn) {
+  if (RELAY_ACTIVE_LOW) {
+    digitalWrite(PUMP_RELAY_PIN, turnOn ? LOW : HIGH);
+  } else {
+    digitalWrite(PUMP_RELAY_PIN, turnOn ? HIGH : LOW);
+  }
+}
+
 void setup() {
   // Initialize serial debugging communications
   Serial.begin(115200);
-  Serial.println("System starting... GeoKisan / GeoFarmer Aab-e-Rasi Controller V1.0");
+  Serial.println("System starting... GeoKisan / GeoFarmer Aab-e-Rasi Controller V1.1");
 
-  // --- HARDWARE SAFETY GUARD ROUTINE ---
-  // Configure water pump relay control pin as digital OUTPUT
+  // Configure PUMP Relay pin
   pinMode(PUMP_RELAY_PIN, OUTPUT);
   
-  // IMMEDIATELY force pump relay to LOW state on boot to prevent runaway flooding
-  digitalWrite(PUMP_RELAY_PIN, LOW);
-  Serial.println("Safety Check: Irrigation pump relay forced to LOW (OFF) state.");
+  // IMMEDIATELY force pump relay to OFF state on boot to prevent runaway flooding
+  setPumpRelay(false);
+  Serial.print("Safety Check: Irrigation pump relay forced to OFF state. Polarity: ");
+  Serial.println(RELAY_ACTIVE_LOW ? "ACTIVE-LOW" : "ACTIVE-HIGH");
 
-  // Configure Analog sensor input channels
-  pinMode(SOIL_SENSOR_PIN, INPUT);
-  pinMode(AIR_TEMP_PIN, INPUT);
+  // Configure analog input pins
+  pinMode(SOIL_SENSOR_1_PIN, INPUT);
+  pinMode(SOIL_SENSOR_2_PIN, INPUT);
+
+  // Initialize DHT sensor
+  dht.begin();
 
   // Initialize WiFi connection loops
   Serial.print("Connecting to local agricultural network SSID: ");
@@ -69,7 +93,7 @@ void setup() {
     Serial.print("Local IP Address assigned: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n[WARNING] Network connection timeout. Operating in offline logging mode.");
+    Serial.println("\n[WARNING] Network connection timeout. Operating in offline fallback mode.");
   }
 }
 
@@ -80,31 +104,40 @@ void loop() {
   if (current_time - last_post_time >= POLL_INTERVAL_MS) {
     last_post_time = current_time;
 
-    // Read Volumetric Soil Moisture ADC (Range: 0 - 4095 for ESP32, mapped down to standard 10-bit 0-1023 scale)
-    int raw_adc_val = analogRead(SOIL_SENSOR_PIN);
-    int soil_moisture_scaled = raw_adc_val / 4; // Map 12-bit to 10-bit scale
-
-    // Read atmospheric analog values or compute mock representations for environmental telemetry
-    // Utilizing standard conversion logic without invoking external cmath headers
-    int ambient_sensor_reading = analogRead(AIR_TEMP_PIN);
+    // Read both Soil Sensors and average their values to send to the server
+    int raw_soil1 = analogRead(SOIL_SENSOR_1_PIN);
+    int raw_soil2 = analogRead(SOIL_SENSOR_2_PIN);
     
-    // Convert atmospheric temperature analog inputs to estimated degrees Celsius
-    float temperature_celsius = 15.0 + (ambient_sensor_reading * 30.0 / 4095.0); 
-    // Convert air humidity inputs to estimated relative percentage
-    float relative_humidity = 40.0 + (ambient_sensor_reading * 50.0 / 4095.0);
+    // Scale 12-bit (0-4095) down to 10-bit (0-1023)
+    int soil1_10bit = raw_soil1 / 4;
+    int soil2_10bit = raw_soil2 / 4;
+    int average_soil = (soil1_10bit + soil2_10bit) / 2;
 
-    Serial.print("Current Sensor Readout: Temperature=");
-    Serial.print(temperature_celsius);
-    Serial.print(" C, Humidity=");
-    Serial.print(relative_humidity);
-    Serial.print("%, Soil Volumetric (10-bit)=");
-    Serial.println(soil_moisture_scaled);
+    // Read actual DHT22 sensor values
+    float temp_val = dht.readTemperature();
+    float hum_val = dht.readHumidity();
 
-    // Active automatic override fail-safe for localized execution:
-    // If soil readings indicate extreme arid drought (> 700 on 10-bit scale),
-    // trigger safety notification print and open standard automation rules.
-    if (soil_moisture_scaled > 700) {
-      Serial.println("[CRITICAL] Extremely dry soil detected. Local backup automation recommendation triggered.");
+    // Fallback if sensor read fails (e.g. disconnected pin)
+    if (isnan(temp_val) || isnan(hum_val)) {
+      Serial.println("[ERROR] Failed to read from DHT22! Using fallback simulated environment.");
+      temp_val = 27.5;
+      hum_val = 60.0;
+    }
+
+    Serial.print("Sensors -> Temp: ");
+    Serial.print(temp_val);
+    Serial.print(" C | Hum: ");
+    Serial.print(hum_val);
+    Serial.print("% | Soil1 (D34): ");
+    Serial.print(soil1_10bit);
+    Serial.print(" | Soil2 (D35): ");
+    Serial.print(soil2_10bit);
+    Serial.print(" | Avg Soil: ");
+    Serial.println(average_soil);
+
+    // Active automatic override fail-safe for localized execution
+    if (average_soil > 700) {
+      Serial.println("[CRITICAL] Dry soil detected. Local backup irrigation rule ready.");
     }
 
     // Attempt network transmission if connected
@@ -117,10 +150,10 @@ void loop() {
       // Specify form url-encoded headers
       http.addHeader("Content-Type", "application/x-www-form-urlencoded");
       
-      // Construct form payload parameters manually without complex styling engines
-      String post_payload = "temp=" + String(temperature_celsius, 2) +
-                            "&humidity=" + String(relative_humidity, 2) +
-                            "&soil1=" + String(soil_moisture_scaled);
+      // Construct form payload parameters manually
+      String post_payload = "temp=" + String(temp_val, 2) +
+                            "&humidity=" + String(hum_val, 2) +
+                            "&soil1=" + String(average_soil);
                             
       Serial.print("Broadcasting payload packet: ");
       Serial.println(post_payload);
@@ -137,11 +170,11 @@ void loop() {
         
         // Wirelessly trigger physical irrigation pump relay pin based on server command
         if (server_response.indexOf("\"pump_active\":\"true\"") != -1) {
-          digitalWrite(PUMP_RELAY_PIN, HIGH);
-          Serial.println("[PUMP RELAY] Forced to HIGH (ON) by server command.");
+          setPumpRelay(true);
+          Serial.println("[PUMP RELAY] Forced to ON by server command.");
         } else {
-          digitalWrite(PUMP_RELAY_PIN, LOW);
-          Serial.println("[PUMP RELAY] Forced to LOW (OFF) by server command.");
+          setPumpRelay(false);
+          Serial.println("[PUMP RELAY] Forced to OFF by server command.");
         }
       } else {
         Serial.print("POST connection failure error code: ");
