@@ -203,7 +203,34 @@ firebase_initialized = False
 
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
-# Try to initialize Gemini Generative AI for multimodal vision diagnostics
+# Try to initialize Vertex AI client (Option 2)
+vertex_client = None
+vertex_ready = False
+vertex_last_error = "None"
+
+try:
+    print("[Vertex AI] Initializing client using geofarmer-v2-c591674c09dd.json...")
+    sa_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geofarmer-v2-c591674c09dd.json")
+    if os.path.exists(sa_path):
+        from google import genai
+        from google.oauth2 import service_account
+        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+        credentials = service_account.Credentials.from_service_account_file(sa_path, scopes=scopes)
+        vertex_client = genai.Client(
+            vertexai=True,
+            project="geofarmer-v2",
+            location="us-central1",
+            credentials=credentials
+        )
+        vertex_ready = True
+        print("[Vertex AI] Successfully initialized Vertex AI client!")
+    else:
+        print("[Vertex AI] geofarmer-v2-c591674c09dd.json credentials file not found. Running without Vertex AI.")
+except Exception as e:
+    vertex_last_error = str(e)
+    print(f"[Vertex AI] Initialization failed: {e}")
+
+# Try to initialize Gemini Generative AI for multimodal vision diagnostics (Fallback to AI Studio Key)
 gemini_ready = False
 gemini_model = None
 gemini_last_error = "None"
@@ -223,8 +250,25 @@ if GEMINI_API_KEY:
 
 def call_gemini_api(system_prompt: str, user_prompt: str, api_key: Optional[str] = None) -> str:
     """
-    Synchronous helper to execute prompt requests against the Gemini API.
+    Synchronous helper to execute prompt requests against the Vertex AI or Gemini API.
     """
+    if vertex_ready and vertex_client and not api_key:
+        try:
+            from google.genai import types
+            config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.4
+            )
+            response = vertex_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_prompt,
+                config=config
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            print(f"[Vertex AI Error] call_gemini_api failed: {e}")
+            
     key_to_use = api_key or os.environ.get("GEMINI_API_KEY")
     if not key_to_use:
         return ""
@@ -393,6 +437,23 @@ async def ai_ask_image(
     image: UploadFile = File(...)
 ):
     image_bytes = await image.read()
+    
+    # 1. Try Vertex AI first (Option 2)
+    if vertex_ready and vertex_client:
+        try:
+            from PIL import Image
+            import io
+            pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            response = vertex_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[prompt, pil_img]
+            )
+            if response and response.text:
+                return {"reply": response.text.strip()}
+        except Exception as e:
+            print(f"[ask-image] Vertex AI error: {e}")
+            
+    # 2. Fallback to API Key (AI Studio)
     api_key_to_use = os.environ.get("GEMINI_API_KEY")
     if api_key_to_use:
         try:
@@ -405,9 +466,9 @@ async def ai_ask_image(
             response = local_gemini_model.generate_content([prompt, pil_img])
             return {"reply": response.text.strip()}
         except Exception as e:
-            print(f"[ask-image] Gemini error: {e}")
+            print(f"[ask-image] Gemini AI Studio error: {e}")
             
-    return {"reply": "Could not analyze the image. Please verify Gemini API Key configuration."}
+    return {"reply": "Could not analyze the image. Please verify Gemini configuration."}
 
 class ChatMessage(BaseModel):
     role: str
@@ -421,6 +482,34 @@ class ChatHistoryRequest(BaseModel):
 def ai_chat_history(payload: ChatHistoryRequest):
     system_prompt = payload.system_prompt or "You are GeoFarmer AI, a master agricultural assistant for Pakistani farmers."
     
+    # 1. Try Vertex AI first (Option 2)
+    if vertex_ready and vertex_client:
+        try:
+            from google.genai import types
+            contents = []
+            for msg in payload.history:
+                role = "user" if msg.role == "user" else "model"
+                contents.append(
+                    types.Content(
+                        role=role,
+                        parts=[types.Part.from_text(text=msg.content)]
+                    )
+                )
+            config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.4
+            )
+            response = vertex_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=config
+            )
+            if response and response.text:
+                return {"reply": response.text.strip()}
+        except Exception as e:
+            print(f"[chat-history] Vertex AI error: {e}")
+            
+    # 2. Fallback to API Key (AI Studio)
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
@@ -897,10 +986,83 @@ async def detect_disease(
     print(f"[Detect] Key selected: {key_preview} (Source: {key_src})")
     
     # Execute actual ML classification
-    # 1. Try Gemini Multimodal Vision if API key is provided (Production Grade)
+    # Execute actual ML classification
+    # 1. Try Gemini Multimodal Vision if Vertex AI or API key is provided (Production Grade)
     # 2. Fall back to local YOLOv8 ONNX model
     gemini_diagnostic = None
-    if api_key_to_use:
+    
+    # Try Vertex AI first (Option 2)
+    if vertex_ready and vertex_client and not x_gemini_api_key:
+        try:
+            from PIL import Image
+            import io
+            
+            # Load image for VLM input
+            pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            
+            prompt_context = f"Crop Type: {crop_name if crop_name else 'Unknown crop'}. File Name: {filename}."
+            
+            prompt = f"""
+            You are an expert precision agricultural visual pathologist and computer vision model.
+            The user's active farm crop is selected as: {crop_name if crop_name else 'Unknown crop'}. 
+            However, due to app UI limitations, the user might have uploaded a different crop leaf (e.g. Potato, Tomato, Corn, Grape, Apple, Peach, etc.).
+            
+            Your task:
+            1. Determine if this image is a valid close-up of a crop leaf/plant. If the image is NOT a crop leaf (e.g. it is a dinner plate, food, a face, keyboard, shoe, animal, or random room background), you MUST return a JSON with "status": "invalid".
+            2. If it is a leaf, identify the actual plant/crop visible in the image. Classify if it has any disease (such as Wheat Rust, Rice Blast, Potato Late Blight, Cotton Leaf Curl Virus, Tomato Early Blight, Apple Scab, Grape Black Rot, etc.) or if it is healthy. Do not be restricted by the selected farm crop '{crop_name}' if the image clearly shows a different crop leaf.
+            3. If it has a disease, identify one or more bounding boxes where the disease symptoms/lesions are located on the leaf. Coordinate space is normalized from 0.0 to 1.0 (where x=0, y=0 is top-left, and x=1, y=1 is bottom-right).
+            
+            You must return a raw JSON response. Do not include markdown wraps, code blocks, or triple backticks.
+            Return raw JSON only, matching this structure:
+            {{
+              "status": "success" or "invalid",
+              "highest_confidence_class": "Name of the crop disease (e.g. Potato Late Blight, Tomato Early Blight, Wheat Rust) or 'Healthy Crop Leaf' or 'Invalid Image'",
+              "severity_level": "Mild, Moderate, Severe, or None",
+              "confidence": 0.95,
+              "urdu_name": "Urdu translation (e.g. آلو کا جھلساؤ, پیلا کُنگ) or 'ناموزوں تصویر'",
+              "description": "Short explanation of the diagnosis based on the image visual details.",
+              "remediation_en": "Organic remedy and chemical spray recommendation (or 'Please upload a clear picture of a crop leaf' if invalid).",
+              "remediation_ur": "علاج (اردو میں)",
+              "bounding_boxes": [
+                {{
+                  "x": 0.25,
+                  "y": 0.30,
+                  "width": 0.40,
+                  "height": 0.50,
+                  "class_name": "Wheat Rust",
+                  "confidence": 0.95
+                }}
+              ]
+            }}
+            """
+            
+            print(f"[Vertex AI] Dispatching visual scan for crop context '{crop_name}' using model 'gemini-2.5-flash'...")
+            response = vertex_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[prompt, pil_img]
+            )
+            
+            resp_text = response.text.strip()
+            if resp_text.startswith("```json"):
+                resp_text = resp_text[7:]
+            if resp_text.endswith("```"):
+                resp_text = resp_text[:-3]
+            resp_text = resp_text.strip()
+            
+            gemini_diagnostic = json.loads(resp_text)
+            if "bounding_boxes" not in gemini_diagnostic:
+                gemini_diagnostic["bounding_boxes"] = []
+                
+            print(f"[Vertex AI] Diagnostic output: {gemini_diagnostic.get('highest_confidence_class')}")
+            
+            # Save to history and return immediately
+            disease_history.append(gemini_diagnostic)
+            return gemini_diagnostic
+        except Exception as vertex_err:
+            print(f"[Vertex AI] Vision diagnostic failed: {vertex_err}")
+
+    # Fallback to AI Studio API Key (if provided or configured)
+    if not gemini_diagnostic and api_key_to_use:
         try:
             import google.generativeai as genai
             from PIL import Image
