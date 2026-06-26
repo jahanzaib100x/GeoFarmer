@@ -78,6 +78,7 @@ void setup() {
   Serial.print("Connecting to local agricultural network SSID: ");
   Serial.println(WIFI_SSID);
   
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   
   // Perform synchronous blocking wait for network association
@@ -184,8 +185,7 @@ void loop() {
       // Release telemetry client resources
       http.end();
     } else {
-      Serial.println("[OFFLINE] Cannot broadcast telemetry. Retrying network association...");
-      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      Serial.println("[OFFLINE] Cannot broadcast telemetry. Waiting for automatic WiFi reconnect...");
     }
   }
 }
