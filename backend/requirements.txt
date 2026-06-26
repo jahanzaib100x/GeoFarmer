@@ -8,3 +8,5 @@ pillow
 onnxruntime
 google-generativeai
 earthengine-api
+google-genai
+google-auth
