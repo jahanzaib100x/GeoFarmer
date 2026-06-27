@@ -19,7 +19,12 @@ class TtsService {
     _listeners.remove(cb);
   }
 
+  static bool _initializing = false;
+  static bool _initialized = false;
+
   static Future<void> init() async {
+    if (_initialized || _initializing) return;
+    _initializing = true;
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
         try {
@@ -42,8 +47,11 @@ class TtsService {
         _isSpeaking = false;
         _notifyListeners();
       });
+      _initialized = true;
     } catch (e) {
       print("TtsService init failed: $e");
+    } finally {
+      _initializing = false;
     }
   }
 

@@ -1402,6 +1402,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
   double _waterFlowRate = 0.0;
   String _waterSummaryEn = "System loading...";
   String _waterSummaryUr = "لوڈ ہو رہا ہے...";
+  bool _isPumpActive = false;
   // Frost AI warnings
   bool _frostWarning = false;
   String _frostAdviceEn = "";
@@ -1866,6 +1867,17 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
             _frostAdviceEn = data["frost_advice"];
             _frostAdviceUr = data["frost_advice_ur"];
           });
+          try {
+            final pumpResp = await _makeHttpGet("${globalBackendUrl}/api/pump");
+            if (pumpResp != null) {
+              final pumpData = json.decode(pumpResp);
+              setState(() {
+                _isPumpActive = pumpData["pump_active"] == true;
+              });
+            }
+          } catch (pe) {
+            print("Failed loading pump state: $pe");
+          }
           double moisturePct = ((1023 - _soilRawADC) / 1023.0 * 100.0).clamp(0.0, 100.0);
           SensorDataProvider().updateReadings(moisturePct, _ambientTemp, _ambientHumidity);
           _fetchAiFarmInsight();
@@ -2931,39 +2943,78 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               ),
             ),
             const SizedBox(height: 12),
-            _buildActionSubmitButton(
-              label: widget.isUrdu ? "دستی طور پر پمپ چلائیں" : "Execute Manual Water Pump Run",
-              onPressed: () async {
-                if (!widget.isOffline) {
-                  try {
-                    await _makeHttpPost("${globalBackendUrl}/api/pump?active=true", {});
-                  } catch (e) {
-                    print("Failed to start pump: $e");
-                  }
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      widget.isUrdu
-                          ? "آبِ رسی سمارٹ پمپ کامیابی سے شروع کر دیا گیا۔ سگنل فورسڈ۔"
-                          : "Aab-e-Rasi simulated pump relay activated successfully. Pins forced safe.",
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.water_drop, color: GeoKisanTheme.waterBlue, size: 28),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.isUrdu ? "آبپاشی پمپ کنٹرول" : "Irrigation Pump Control",
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _isPumpActive 
+                                  ? (widget.isUrdu ? "پمپ چالو ہے" : "Pump is active (ON)") 
+                                  : (widget.isUrdu ? "پمپ بند ہے" : "Pump is inactive (OFF)"),
+                              style: TextStyle(
+                                fontSize: 12, 
+                                color: _isPumpActive ? Colors.green.shade700 : Colors.grey.shade600,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    action: SnackBarAction(
-                      label: widget.isUrdu ? "بند کریں" : "STOP",
-                      textColor: Colors.redAccent,
-                      onPressed: () async {
+                    Switch(
+                      value: _isPumpActive,
+                      activeColor: GeoKisanTheme.primaryGreen,
+                      onChanged: (val) async {
                         if (!widget.isOffline) {
                           try {
-                            await _makeHttpPost("${globalBackendUrl}/api/pump?active=false", {});
+                            final stateStr = val ? "true" : "false";
+                            final response = await _makeHttpPost("${globalBackendUrl}/api/pump?active=$stateStr", {});
+                            if (response != null) {
+                              final resData = json.decode(response);
+                              setState(() {
+                                _isPumpActive = resData["pump_active"] == true;
+                              });
+                            }
                           } catch (e) {
-                            print("Failed to stop pump: $e");
+                            print("Failed to toggle pump: $e");
                           }
+                        } else {
+                          setState(() {
+                            _isPumpActive = val;
+                          });
                         }
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _isPumpActive
+                                  ? (widget.isUrdu ? "پمپ کامیابی سے شروع کر دیا گیا۔" : "Irrigation pump relay activated successfully.")
+                                  : (widget.isUrdu ? "پمپ کامیابی سے بند کر دیا گیا۔" : "Irrigation pump relay deactivated successfully.")
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
                       },
                     ),
-                  ),
-                );
-              },
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             Card(

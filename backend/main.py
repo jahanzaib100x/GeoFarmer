@@ -231,6 +231,11 @@ disease_history: List[Dict[str, Any]] = []
 firebase_initialized = False
 
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
+def get_google_maps_api_key():
+    load_env_file("backend/.env")
+    load_env_file(".env")
+    return os.environ.get("GOOGLE_MAPS_API_KEY")
+
 
 # Try to initialize Vertex AI client (Option 2)
 vertex_client = None
@@ -397,53 +402,198 @@ def set_pump_state(active: bool):
 
 # --- Google Maps Proxy Endpoints ---
 
+# --- Google Maps Proxy Endpoints ---
+
+# --- Google Maps Proxy Endpoints ---
+
 @app.get("/api/maps/autocomplete")
 def maps_autocomplete(input: str):
-    if not GOOGLE_MAPS_API_KEY:
-        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    key = get_google_maps_api_key()
     import requests
-    url = f"https://maps.googleapis.com/maps/api/place/autocomplete/json?input={requests.utils.quote(input)}&key={GOOGLE_MAPS_API_KEY}&components=country:pk"
+    if key:
+        url = f"https://maps.googleapis.com/maps/api/place/autocomplete/json?input={requests.utils.quote(input)}&key={key}&components=country:pk"
+        try:
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            if data.get("status") in ["OK", "ZERO_RESULTS"]:
+                return data
+            else:
+                print(f"[Autocomplete] Google Maps error/denied: {data.get('error_message')}. Trying Gemini fallback...")
+        except Exception as e:
+            print(f"[Autocomplete] Google Maps request failed: {e}. Trying Gemini fallback...")
+            
+    # Gemini Autocomplete Fallback
     try:
-        response = requests.get(url, timeout=10)
-        return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        sys_prompt = "You are a places search API. Generate up to 5 location suggestions in Pakistan matching the search input. Return ONLY a strict JSON list of objects (no markdown, no backticks, no comments), each containing fields: 'description' (string, full formatted address), 'name' (string, main name of place), 'secondary' (string, secondary address details)."
+        user_prompt = f"Search input: {input}"
+        gemini_response = call_gemini_api(sys_prompt, user_prompt)
+        
+        clean_res = gemini_response.replace("```json", "").replace("```", "").strip()
+        suggestions = json.loads(clean_res)
+        predictions = []
+        for idx, item in enumerate(suggestions):
+            predictions.append({
+                "description": item["description"],
+                "place_id": f"gemini_{item['description']}",
+                "structured_formatting": {
+                    "main_text": item.get("name") or item["description"].split(",")[0],
+                    "secondary_text": item.get("secondary") or ", ".join(item["description"].split(",")[1:])
+                }
+            })
+        return {"status": "OK", "predictions": predictions}
+    except Exception as ae:
+        print(f"[Autocomplete] Gemini fallback failed: {ae}")
+        return {"status": "ZERO_RESULTS", "predictions": []}
 
 @app.get("/api/maps/place-details")
 def maps_place_details(place_id: str):
-    if not GOOGLE_MAPS_API_KEY:
-        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
     import requests
-    url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&key={GOOGLE_MAPS_API_KEY}"
-    try:
-        response = requests.get(url, timeout=10)
-        return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if place_id.startswith("gemini_"):
+        address = place_id.replace("gemini_", "")
+        try:
+            geo = maps_geocode(address)
+            loc = geo["results"][0]["geometry"]["location"]
+            return {
+                "status": "OK",
+                "result": {
+                    "geometry": {
+                        "location": {
+                            "lat": loc["lat"],
+                            "lng": loc["lng"]
+                        }
+                    }
+                }
+            }
+        except Exception as e:
+            print(f"[Place Details] Gemini details lookup failed: {e}")
+            raise HTTPException(status_code=500, detail="Gemini lookup failed")
+            
+    key = get_google_maps_api_key()
+    if key:
+        url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&key={key}"
+        try:
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            if data.get("status") == "OK":
+                return data
+        except Exception as e:
+            print(f"[Place Details] Google Maps request failed: {e}")
+            
+    raise HTTPException(status_code=500, detail="Place details service unavailable")
 
 @app.get("/api/maps/geocode")
 def maps_geocode(address: str):
-    if not GOOGLE_MAPS_API_KEY:
-        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    key = get_google_maps_api_key()
     import requests
-    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={requests.utils.quote(address)}&key={GOOGLE_MAPS_API_KEY}"
+    if key:
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?address={requests.utils.quote(address)}&key={key}"
+        try:
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            if data.get("status") == "OK":
+                return data
+            else:
+                print(f"[Geocode] Google Maps API error/denied: {data.get('error_message')}. Trying Gemini fallback...")
+        except Exception as e:
+            print(f"[Geocode] Google Maps request failed: {e}. Trying Gemini fallback...")
+            
+    # Gemini geocoding fallback
     try:
-        response = requests.get(url, timeout=10)
-        return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        sys_prompt = "You are a geocoding API. Resolve the given address in Pakistan to latitude and longitude coordinates. Return ONLY a strict JSON object (no markdown, no backticks, no comments) with keys: 'lat' (number) and 'lng' (number)."
+        user_prompt = f"Resolve this address: {address}"
+        gemini_response = call_gemini_api(sys_prompt, user_prompt)
+        
+        # Clean markdown formatting if present
+        clean_res = gemini_response.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_res)
+        lat = float(data["lat"])
+        lng = float(data["lng"])
+        return {
+            "status": "OK",
+            "results": [{
+                "formatted_address": f"{address}, Pakistan",
+                "geometry": {
+                    "location": {
+                        "lat": lat,
+                        "lng": lng
+                    }
+                }
+            }]
+        }
+    except Exception as ge:
+        print(f"[Geocode] Gemini geocoding fallback failed: {ge}")
+        
+    raise HTTPException(status_code=500, detail="Geocoding service unavailable")
 
 @app.get("/api/maps/directions")
 def maps_directions(origin: str, destination: str):
-    if not GOOGLE_MAPS_API_KEY:
-        raise HTTPException(status_code=500, detail="Google Maps API Key not configured on server")
+    key = get_google_maps_api_key()
     import requests
-    url = f"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&key={GOOGLE_MAPS_API_KEY}"
+    if key:
+        url = f"https://maps.googleapis.com/maps/api/directions/json?origin={origin}&destination={destination}&key={key}"
+        try:
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            if data.get("status") == "OK":
+                return data
+            else:
+                print(f"[Directions] Google Maps API error/denied: {data.get('error_message')}. Trying OSRM fallback...")
+        except Exception as e:
+            print(f"[Directions] Google Maps request failed: {e}. Trying OSRM fallback...")
+            
+    # OSRM Fallback (Open Source Routing Machine)
     try:
-        response = requests.get(url, timeout=10)
-        return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        orig_lat, orig_lng = map(float, origin.split(","))
+        dest_lat, dest_lng = map(float, destination.split(","))
+    except Exception:
+        # Try geocoding origin and destination address strings to lat/lng first
+        try:
+            orig_geo = maps_geocode(origin)
+            dest_geo = maps_geocode(destination)
+            orig_loc = orig_geo["results"][0]["geometry"]["location"]
+            dest_loc = dest_geo["results"][0]["geometry"]["location"]
+            orig_lat, orig_lng = orig_loc["lat"], orig_loc["lng"]
+            dest_lat, dest_lng = dest_loc["lat"], dest_loc["lng"]
+        except Exception as ge:
+            print(f"[Directions] Address parsing/geocoding failed: {ge}")
+            raise HTTPException(status_code=500, detail="Invalid directions query formats")
+
+    osrm_url = f"http://router.project-osrm.org/route/v1/driving/{orig_lng},{orig_lat};{dest_lng},{dest_lat}?overview=full&geometries=polyline"
+    try:
+        res = requests.get(osrm_url, timeout=10)
+        route_data = res.json()
+        if route_data.get("code") == "Ok" and route_data.get("routes"):
+            route = route_data["routes"][0]
+            distance_km = route["distance"] / 1000.0
+            duration_mins = route["duration"] / 60.0
+            
+            distance_text = f"{distance_km:.1f} km"
+            duration_text = f"{int(duration_mins // 60)} hours {int(duration_mins % 60)} mins" if duration_mins >= 60 else f"{int(duration_mins)} mins"
+            
+            polyline_str = route["geometry"]
+            return {
+                "status": "OK",
+                "routes": [{
+                    "summary": "OSRM Open Driving Route",
+                    "overview_polyline": {
+                        "points": polyline_str
+                    },
+                    "legs": [{
+                        "distance": {
+                            "text": distance_text,
+                            "value": int(route["distance"])
+                        },
+                        "duration": {
+                            "text": duration_text,
+                            "value": int(route["duration"])
+                        }
+                    }]
+                }]
+            }
+    except Exception as oe:
+        print(f"[Directions] OSRM fallback failed: {oe}")
+        
+    raise HTTPException(status_code=500, detail="Directions service unavailable")
 
 # --- Server-side AI Proxy Endpoints ---
 
