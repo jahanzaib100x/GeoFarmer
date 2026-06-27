@@ -31,12 +31,12 @@ const int DHT_PIN = 4;              // DHT22 temperature and humidity sensor dat
 const bool RELAY_ACTIVE_LOW = true; 
 
 // --- WIFI CONFIGURATION ---
-const char* WIFI_SSID = "GeoFarmer_Kisan_AP";
-const char* WIFI_PASS = "KisanConnectionSecurePass";
+const char* WIFI_SSID = "Super";
+const char* WIFI_PASS = "100200100";
 
 // --- API SERVER CONFIGURATION ---
 // Change 192.168.1.100 to the actual local IP address of your running FastAPI server.
-const char* SERVER_ENDPOINT = "http://192.168.1.100:8000/api/telemetry";
+const char* SERVER_ENDPOINT = "https://geofarmer-backend.onrender.com/api/telemetry";
 
 // Core System Timing Configurations
 const unsigned long POLL_INTERVAL_MS = 5000; // Ingestion loop frequency (5 seconds)
@@ -120,7 +120,11 @@ void loop() {
 
     // Fallback if sensor read fails (e.g. disconnected pin)
     if (isnan(temp_val) || isnan(hum_val)) {
-      Serial.println("[ERROR] Failed to read from DHT22! Using fallback simulated environment.");
+      Serial.println("[ERROR] Failed to read from DHT22!");
+      Serial.println("[TIP 1] If you are using a blue DHT11 instead of a white DHT22, change the sensor constructor in this sketch from DHT22 to DHT11.");
+      Serial.println("[TIP 2] Check if the sensor VCC is on 3V3, GND to GND, and Data is connected firmly to GPIO 4 (D4).");
+      Serial.println("[TIP 3] Ensure a 4.7k or 10k pull-up resistor is installed between Data and VCC if your module lacks one.");
+      Serial.println("Using fallback simulated environment.");
       temp_val = 27.5;
       hum_val = 60.0;
     }
@@ -170,12 +174,21 @@ void loop() {
         Serial.println(server_response);
         
         // Wirelessly trigger physical irrigation pump relay pin based on server command
-        if (server_response.indexOf("\"pump_active\":\"true\"") != -1) {
+        // We support multiple variations of the pump_active parameter (with or without spaces, string or boolean)
+        bool cmd_active = false;
+        if (server_response.indexOf("\"pump_active\":\"true\"") != -1 ||
+            server_response.indexOf("\"pump_active\": \"true\"") != -1 ||
+            server_response.indexOf("\"pump_active\":true") != -1 ||
+            server_response.indexOf("\"pump_active\": true") != -1) {
+          cmd_active = true;
+        }
+
+        if (cmd_active) {
           setPumpRelay(true);
-          Serial.println("[PUMP RELAY] Forced to ON by server command.");
+          Serial.println("[PUMP RELAY] Forced to ON by server command. Relay pin set to: " + String(RELAY_ACTIVE_LOW ? "LOW" : "HIGH"));
         } else {
           setPumpRelay(false);
-          Serial.println("[PUMP RELAY] Forced to OFF by server command.");
+          Serial.println("[PUMP RELAY] Forced to OFF by server command. Relay pin set to: " + String(RELAY_ACTIVE_LOW ? "HIGH" : "LOW"));
         }
       } else {
         Serial.print("POST connection failure error code: ");

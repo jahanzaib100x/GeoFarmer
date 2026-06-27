@@ -21,6 +21,13 @@ class TtsService {
 
   static Future<void> init() async {
     try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await _tts.setEngine("com.google.android.tts");
+        } catch (e) {
+          print("TtsService failed to set Google TTS engine: $e");
+        }
+      }
       await _tts.setLanguage('en-US');
       await _tts.setSpeechRate(0.5);
       _tts.setCompletionHandler(() {

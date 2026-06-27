@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
@@ -21,6 +22,13 @@ class VoiceService {
 
   Future<void> initTts() async {
     try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await _tts.setEngine("com.google.android.tts");
+        } catch (e) {
+          print("[VoiceService] Failed to set Google TTS engine: $e");
+        }
+      }
       await _tts.setVolume(1.0);
       await _tts.setSpeechRate(0.5);
       await _tts.setPitch(1.0);
@@ -104,6 +112,21 @@ class VoiceService {
       }
 
       String locale = _mapToSttLocale(languageCode);
+      try {
+        final systemLocales = await _stt.locales();
+        final hasLocale = systemLocales.any((l) => l.localeId == locale || l.localeId.split('_')[0] == languageCode);
+        if (!hasLocale && systemLocales.isNotEmpty) {
+          print("[VoiceService] Locale $locale not available. Finding match for $languageCode...");
+          final matched = systemLocales.firstWhere(
+            (l) => l.localeId.split('_')[0] == languageCode,
+            orElse: () => systemLocales.first,
+          );
+          locale = matched.localeId;
+          print("[VoiceService] Found fallback locale: $locale");
+        }
+      } catch (le) {
+        print("[VoiceService] Locales query failed: $le. Using default mapping: $locale");
+      }
       _isListening = true;
 
       await _stt.listen(

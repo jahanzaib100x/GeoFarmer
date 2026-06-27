@@ -476,6 +476,60 @@ class LedgerItem {
     required this.date,
   });
 }
+
+class LocalPersistence {
+  static Future<void> saveData({
+    required List<LandNode> lands,
+    required Map<String, List<CropRecord>> crops,
+    required Map<String, List<Map<String, String>>> chats,
+    required Map<String, List<LedgerItem>> ledgers,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final landsJson = lands.map((l) => {
+        'id': l.id,
+        'nickname': l.nickname,
+        'size': l.size,
+        'unit': l.unit,
+        'latitude': l.latitude,
+        'longitude': l.longitude,
+        'description': l.description,
+        'address': l.address,
+      }).toList();
+      await prefs.setString('persisted_lands_v2', json.encode(landsJson));
+
+      final cropsJson = crops.map((key, list) => MapEntry(
+        key,
+        list.map((c) => {
+          'name': c.name,
+          'growthStage': c.growthStage,
+          'sowingDate': c.sowingDate,
+          'variety': c.variety,
+          'type': c.type,
+        }).toList(),
+      ));
+      await prefs.setString('persisted_crops_v2', json.encode(cropsJson));
+
+      await prefs.setString('persisted_chats_v2', json.encode(chats));
+
+      final ledgersJson = ledgers.map((key, list) => MapEntry(
+        key,
+        list.map((item) => {
+          'id': item.id,
+          'description': item.description,
+          'category': item.category,
+          'amount': item.amount,
+          'date': item.date,
+        }).toList(),
+      ));
+      await prefs.setString('persisted_ledgers_v2', json.encode(ledgersJson));
+      print("[LocalPersistence] All data successfully saved to SharedPreferences.");
+    } catch (e) {
+      print("[LocalPersistence] saveData failed: $e");
+    }
+  }
+}
+
 class GeoKisanHomePage extends StatefulWidget {
   final bool isUrdu;
   final bool isDarkMode;
@@ -620,8 +674,116 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
           }
         }
       });
+      // Override or populate with persisted data
+      await _loadPersistedData();
     } catch (e) {
       print("Error loading onboarding preferences: $e");
+    }
+  }
+
+  Future<void> _persistAllData() async {
+    await LocalPersistence.saveData(
+      lands: _lands,
+      crops: _landCrops,
+      chats: _landChats,
+      ledgers: _landLedgers,
+    );
+  }
+
+  Future<void> _loadPersistedData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final landsStr = prefs.getString('persisted_lands_v2');
+      final cropsStr = prefs.getString('persisted_crops_v2');
+      final chatsStr = prefs.getString('persisted_chats_v2');
+      final ledgersStr = prefs.getString('persisted_ledgers_v2');
+
+      setState(() {
+        if (landsStr != null) {
+          final List<dynamic> decoded = json.decode(landsStr);
+          _lands = decoded.map((item) => LandNode(
+            id: item['id'] ?? '',
+            nickname: item['nickname'] ?? '',
+            size: (item['size'] as num?)?.toDouble() ?? 0.0,
+            unit: item['unit'] ?? 'Acres',
+            latitude: (item['latitude'] as num?)?.toDouble() ?? 0.0,
+            longitude: (item['longitude'] as num?)?.toDouble() ?? 0.0,
+            description: item['description'] ?? '',
+            address: item['address'] ?? '',
+          )).toList();
+        }
+
+        if (cropsStr != null) {
+          final Map<String, dynamic> decoded = json.decode(cropsStr);
+          _landCrops = decoded.map((key, list) => MapEntry(
+            key,
+            (list as List).map((item) => CropRecord(
+              name: item['name'] ?? '',
+              growthStage: item['growthStage'] ?? '',
+              sowingDate: item['sowingDate'] ?? '',
+              variety: item['variety'] ?? '',
+              type: item['type'] ?? '',
+            )).toList(),
+          ));
+        }
+
+        if (chatsStr != null) {
+          final Map<String, dynamic> decoded = json.decode(chatsStr);
+          _landChats = decoded.map((key, list) => MapEntry(
+            key,
+            (list as List).map((item) => Map<String, String>.from(item)).toList(),
+          ));
+        }
+
+        if (ledgersStr != null) {
+          final Map<String, dynamic> decoded = json.decode(ledgersStr);
+          _landLedgers = decoded.map((key, list) => MapEntry(
+            key,
+            (list as List).map((item) => LedgerItem(
+              id: item['id'] ?? '',
+              description: item['description'] ?? '',
+              category: item['category'] ?? '',
+              amount: (item['amount'] as num?)?.toDouble() ?? 0.0,
+              date: item['date'] ?? '',
+            )).toList(),
+          ));
+        }
+
+        // Seed default structures for any loaded lands that are missing them
+        for (var l in _lands) {
+          if (!_landCrops.containsKey(l.id)) {
+            _landCrops[l.id] = [
+              CropRecord(name: "Wheat (Sona-21)", growthStage: "Milk Stage", sowingDate: "2025-11-15", variety: "Sona-2021", type: "Grain"),
+              CropRecord(name: "Cotton (BT-902)", growthStage: "Sowing Stage", sowingDate: "2026-05-10", variety: "BT-902", type: "Cash Crop")
+            ];
+          }
+          if (!_landChats.containsKey(l.id)) {
+            _landChats[l.id] = [
+              {"sender": "bot", "text": "السلام علیکم کسان بھائی! جیو کسان اے آئی اسسٹنٹ میں خوش آمدید۔ میں آپ کے سمارٹ فارم کا تجزیہ کر سکتا ہوں۔"},
+              {"sender": "bot", "text": "Welcome to GeoFarmer! Ask me anything about crop cycles, irrigation runs, or fertilizer prices."}
+            ];
+          }
+          if (!_landLedgers.containsKey(l.id)) {
+            _landLedgers[l.id] = [
+              LedgerItem(id: "1", description: "Bahar Seed Purchase", category: "Expense", amount: 14500.0, date: "2026-05-12"),
+              LedgerItem(id: "2", description: "Urea Fertilizer 5 bags", category: "Expense", amount: 24000.0, date: "2026-05-18"),
+              LedgerItem(id: "3", description: "Wheat Grain Harvest Sale", category: "Income", amount: 185000.0, date: "2026-05-24")
+            ];
+          }
+          if (!_landTelemetrySoil.containsKey(l.id)) {
+            _landTelemetrySoil[l.id] = 520.0;
+          }
+        }
+
+        if (_lands.isNotEmpty) {
+          _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+        } else {
+          _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+        }
+      });
+      print("[LocalPersistence] Successfully loaded persisted data.");
+    } catch (e) {
+      print("[LocalPersistence] _loadPersistedData failed: $e");
     }
   }
   void _switchLand(LandNode land) {
@@ -870,10 +1032,12 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                         _lands = newLands;
                         _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
                       });
+                      _persistAllData();
                     },
                     onSetLanguage: widget.onSetLanguage,
                     isTab: true,
                     onSwitchLand: _switchLand,
+                    onSaveData: _persistAllData,
                   ),
                   GeoKisanSubsystemPage(
                     moduleId: 'tab_monitor',
@@ -902,10 +1066,12 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                         _lands = newLands;
                         _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
                       });
+                      _persistAllData();
                     },
                     onSetLanguage: widget.onSetLanguage,
                     isTab: true,
                     onSwitchLand: _switchLand,
+                    onSaveData: _persistAllData,
                   ),
                   GeoKisanSubsystemPage(
                     moduleId: 'tab_ai_hub',
@@ -934,10 +1100,12 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                         _lands = newLands;
                         _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
                       });
+                      _persistAllData();
                     },
                     onSetLanguage: widget.onSetLanguage,
                     isTab: true,
                     onSwitchLand: _switchLand,
+                    onSaveData: _persistAllData,
                   ),
                   GeoKisanSubsystemPage(
                     moduleId: 'm3',
@@ -966,10 +1134,12 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                         _lands = newLands;
                         _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
                       });
+                      _persistAllData();
                     },
                     onSetLanguage: widget.onSetLanguage,
                     isTab: true,
                     onSwitchLand: _switchLand,
+                    onSaveData: _persistAllData,
                   ),
                   GeoKisanSubsystemPage(
                     moduleId: 'tab_more',
@@ -998,10 +1168,12 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                         _lands = newLands;
                         _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
                       });
+                      _persistAllData();
                     },
                     onSetLanguage: widget.onSetLanguage,
                     isTab: true,
                     onSwitchLand: _switchLand,
+                    onSaveData: _persistAllData,
                   ),
                 ],
               ),
@@ -1048,6 +1220,7 @@ class GeoKisanSubsystemPage extends StatefulWidget {
   final Function(String) onSetLanguage;
   final bool isTab;
   final Function(LandNode)? onSwitchLand;
+  final VoidCallback? onSaveData;
 
   const GeoKisanSubsystemPage({
     Key? key,
@@ -1071,6 +1244,7 @@ class GeoKisanSubsystemPage extends StatefulWidget {
     required this.onSetLanguage,
     this.isTab = true,
     this.onSwitchLand,
+    this.onSaveData,
   }) : super(key: key);
 
   @override
@@ -3167,7 +3341,11 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               // CHATBOT WORKSPACE (m4)
               Container(
                 height: 250,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey[300]!)),
+                decoration: BoxDecoration(
+                  color: widget.isDarkMode ? GeoKisanTheme.bgDarkSurface : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: widget.isDarkMode ? Colors.transparent : Colors.grey[300]!),
+                ),
                 child: ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: _localChatHistory.length + (_isChatLoading ? 1 : 0),
@@ -3181,16 +3359,28 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: isBot ? const Color(0xFFEBF5EE) : const Color(0xFFFFF7E6),
+                          color: widget.isDarkMode
+                              ? (isBot ? const Color(0xFF20351C) : const Color(0xFF382910))
+                              : (isBot ? const Color(0xFFEBF5EE) : const Color(0xFFFFF7E6)),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: isBot ? GeoKisanTheme.primaryGreen : GeoKisanTheme.aiGold),
+                          border: Border.all(
+                            color: widget.isDarkMode
+                                ? (isBot ? const Color(0xFF2D5A27) : const Color(0xFF8C5D10))
+                                : (isBot ? GeoKisanTheme.primaryGreen : GeoKisanTheme.aiGold),
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Flexible(
-                              child: Text(chat["text"]!, style: const TextStyle(fontSize: 13)),
+                              child: Text(
+                                chat["text"]!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: widget.isDarkMode ? GeoKisanTheme.surfaceCream : GeoKisanTheme.lightText,
+                                ),
+                              ),
                             ),
                             if (isBot) ...[
                               const SizedBox(width: 8),
@@ -3212,7 +3402,17 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                   Expanded(
                     child: TextField(
                       controller: _chatController,
-                      decoration: InputDecoration(hintText: widget.isUrdu ? "یہاں اردو، انگلش یا رومن اردو میں لکھیں..." : "Type here in Urdu or English...", border: const OutlineInputBorder()),
+                      style: TextStyle(color: widget.isDarkMode ? Colors.white : GeoKisanTheme.lightText),
+                      decoration: InputDecoration(
+                        hintText: widget.isUrdu ? "یہاں اردو، انگلش یا رومن اردو میں لکھیں..." : "Type here in Urdu or English...",
+                        hintStyle: TextStyle(color: widget.isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: widget.isDarkMode ? Colors.grey[700]! : Colors.grey[400]!),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderSide: BorderSide(color: GeoKisanTheme.primaryGreen),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -3401,6 +3601,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                           _ledgerDescController.clear();
                           _ledgerAmountController.clear();
                         });
+                        widget.onSaveData?.call();
                       }
                     }),
                   ],
@@ -3423,6 +3624,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                         setState(() {
                           _localLedgerHistory.removeWhere((item) => item.id == l.id);
                         });
+                        widget.onSaveData?.call();
                       },
                     ),
                   ],
@@ -4104,6 +4306,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                   _localCrops.add(newCrop);
                 });
                 widget.landCrops[widget.activeLand.id] = _localCrops;
+                widget.onSaveData?.call();
                 _cropNameController.clear();
                 Navigator.pop(context);
               }
@@ -4248,6 +4451,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       _chatController.clear();
       _isChatLoading = true;
     });
+    widget.onSaveData?.call();
     if (widget.isOffline) {
       final offlineText = widget.isUrdu
           ? "آف لائن سمارٹ ڈیٹا بیس: نمی کا تناسب مناسب ہے، مزید پانی کی ضرورت نہیں ہے۔"
@@ -4260,6 +4464,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
           });
           _isChatLoading = false;
         });
+        widget.onSaveData?.call();
       });
       return;
     }
@@ -4286,6 +4491,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
       setState(() {
         _localChatHistory.add({"sender": "bot", "text": reply});
       });
+      widget.onSaveData?.call();
     } catch (e) {
       print("Chatbot API failed: $e");
       ScaffoldMessenger.of(context).showSnackBar(

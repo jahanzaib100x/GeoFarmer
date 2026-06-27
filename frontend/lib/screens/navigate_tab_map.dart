@@ -576,6 +576,16 @@ class _NavigateTabMapWorkspaceState extends State<NavigateTabMapWorkspace> with 
                         return Marker(
                           markerId: MarkerId("gee_pt_${entry.key}"),
                           position: entry.value,
+                          draggable: true,
+                          onDragEnd: (newLatLng) {
+                            setState(() {
+                              _boundaryPoints[entry.key] = newLatLng;
+                              _calculatedArea = _calculatePolygonArea(_boundaryPoints);
+                              if (_boundaryPoints.length >= 3) {
+                                _analyzeBoundary();
+                              }
+                            });
+                          },
                           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
                         );
                       }).toSet()
@@ -1235,6 +1245,25 @@ class _FullScreenBoundaryEditorState extends State<FullScreenBoundaryEditor> {
     _mapType = widget.initialMapType;
   }
 
+  void _autoFixBoundary() {
+    if (_points.length < 3) return;
+    double sumLat = 0;
+    double sumLng = 0;
+    for (final pt in _points) {
+      sumLat += pt.latitude;
+      sumLng += pt.longitude;
+    }
+    double meanLat = sumLat / _points.length;
+    double meanLng = sumLng / _points.length;
+    setState(() {
+      _points.sort((a, b) {
+        double angleA = math.atan2(a.latitude - meanLat, a.longitude - meanLng);
+        double angleB = math.atan2(b.latitude - meanLat, b.longitude - meanLng);
+        return angleA.compareTo(angleB);
+      });
+    });
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -1361,6 +1390,12 @@ class _FullScreenBoundaryEditorState extends State<FullScreenBoundaryEditor> {
               return Marker(
                 markerId: MarkerId("gee_pt_fs_${entry.key}"),
                 position: entry.value,
+                draggable: true,
+                onDragEnd: (newLatLng) {
+                  setState(() {
+                    _points[entry.key] = newLatLng;
+                  });
+                },
                 icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
               );
             }).toSet(),
@@ -1425,87 +1460,97 @@ class _FullScreenBoundaryEditorState extends State<FullScreenBoundaryEditor> {
             ),
           ),
 
-          // Floating controls overlay at bottom
-          Positioned(
-            bottom: 20,
-            left: 16,
-            right: 16,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Info Banner
-                Card(
-                  color: const Color(0xFF4A7C2F),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "${widget.isUrdu ? 'رقبہ' : 'Area'}: ${area.toStringAsFixed(2)} ${widget.isUrdu ? 'ایکڑ' : 'Acres'}",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        Text(
-                          _points.length < 3
-                              ? (widget.isUrdu ? "کم از کم 3 پوائنٹس منتخب کریں" : "Place min 3 points")
-                              : (widget.isUrdu ? "پوائنٹس محفوظ کریں" : "Ready to Save"),
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                      ],
+          // Floating controls overlay at top (hidden during active search predictions list view)
+          if (_predictions.isEmpty)
+            Positioned(
+              top: 75,
+              left: 16,
+              right: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Info Banner
+                  Card(
+                    color: const Color(0xFF4A7C2F),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "${widget.isUrdu ? 'رقبہ' : 'Area'}: ${area.toStringAsFixed(2)} ${widget.isUrdu ? 'ایکڑ' : 'Acres'}",
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          Text(
+                            _points.length < 3
+                                ? (widget.isUrdu ? "کم از کم 3 پوائنٹس منتخب کریں" : "Place min 3 points")
+                                : (widget.isUrdu ? "پوائنٹس محفوظ کریں" : "Ready to Save"),
+                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                // Action Buttons Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    FloatingActionButton.extended(
-                      heroTag: "fs_draw_toggle",
-                      onPressed: () {
-                        setState(() {
-                          _isDrawing = !_isDrawing;
-                        });
-                      },
-                      label: Text(_isDrawing
-                          ? (widget.isUrdu ? "ڈرائنگ آن" : "Drawing Active")
-                          : (widget.isUrdu ? "ڈرائنگ آف" : "Panning Mode")),
-                      icon: Icon(_isDrawing ? Icons.edit : Icons.pan_tool),
-                      backgroundColor: _isDrawing ? const Color(0xFF4A7C2F) : Colors.amber[700],
-                    ),
-                    Row(
-                      children: [
-                        if (_points.isNotEmpty)
+                  const SizedBox(height: 10),
+                  // Action Buttons Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      FloatingActionButton.extended(
+                        heroTag: "fs_draw_toggle",
+                        onPressed: () {
+                          setState(() {
+                            _isDrawing = !_isDrawing;
+                          });
+                        },
+                        label: Text(_isDrawing
+                            ? (widget.isUrdu ? "ڈرائنگ آن" : "Drawing Active")
+                            : (widget.isUrdu ? "ڈرائنگ آف" : "Panning Mode")),
+                        icon: Icon(_isDrawing ? Icons.edit : Icons.pan_tool),
+                        backgroundColor: _isDrawing ? const Color(0xFF4A7C2F) : Colors.amber[700],
+                      ),
+                      Row(
+                        children: [
+                          if (_points.length >= 3) ...[
+                            FloatingActionButton.small(
+                              heroTag: "fs_autofix",
+                              onPressed: _autoFixBoundary,
+                              child: const Icon(Icons.auto_fix_high, color: Colors.blue),
+                              backgroundColor: Colors.white,
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          if (_points.isNotEmpty)
+                            FloatingActionButton.small(
+                              heroTag: "fs_undo",
+                              onPressed: () {
+                                setState(() {
+                                  _points.removeLast();
+                                });
+                              },
+                              child: const Icon(Icons.undo),
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF4A7C2F),
+                            ),
+                          const SizedBox(width: 8),
                           FloatingActionButton.small(
-                            heroTag: "fs_undo",
+                            heroTag: "fs_clear",
                             onPressed: () {
                               setState(() {
-                                _points.removeLast();
+                                _points.clear();
                               });
                             },
-                            child: const Icon(Icons.undo),
+                            child: const Icon(Icons.delete, color: Colors.red),
                             backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF4A7C2F),
                           ),
-                        const SizedBox(width: 8),
-                        FloatingActionButton.small(
-                          heroTag: "fs_clear",
-                          onPressed: () {
-                            setState(() {
-                              _points.clear();
-                            });
-                          },
-                          child: const Icon(Icons.delete, color: Colors.red),
-                          backgroundColor: Colors.white,
-                        ),
-                      ],
-                    )
-                  ],
-                ),
-              ],
+                        ],
+                      )
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
