@@ -35,6 +35,67 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterL
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text("GeoFarmer Diagnostic Report"),
+          backgroundColor: Colors.deepOrange,
+        ),
+        body: Container(
+          color: const Color(0xFFF9F6F0),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              const Icon(Icons.bug_report, size: 64, color: Colors.deepOrange),
+              const SizedBox(height: 12),
+              const Text(
+                "A system component threw an exception:",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectionArea(
+                      child: Text(
+                        "${details.exception}\n\nStack Trace:\n${details.stack}",
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.redAccent),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.clear();
+                      SystemChannels.platform.invokeMethod('SystemNavigator.pop');
+                    },
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    label: const Text("Clear Cache & Relaunch", style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  };
   tz.initializeTimeZones();
   try {
     final prefs = await SharedPreferences.getInstance();
@@ -1030,7 +1091,11 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                     onUpdateLands: (newLands) {
                       setState(() {
                         _lands = newLands;
-                        _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        if (_lands.isNotEmpty) {
+                          _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        } else {
+                          _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+                        }
                       });
                       _persistAllData();
                     },
@@ -1064,7 +1129,11 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                     onUpdateLands: (newLands) {
                       setState(() {
                         _lands = newLands;
-                        _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        if (_lands.isNotEmpty) {
+                          _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        } else {
+                          _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+                        }
                       });
                       _persistAllData();
                     },
@@ -1098,7 +1167,11 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                     onUpdateLands: (newLands) {
                       setState(() {
                         _lands = newLands;
-                        _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        if (_lands.isNotEmpty) {
+                          _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        } else {
+                          _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+                        }
                       });
                       _persistAllData();
                     },
@@ -1132,7 +1205,11 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                     onUpdateLands: (newLands) {
                       setState(() {
                         _lands = newLands;
-                        _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        if (_lands.isNotEmpty) {
+                          _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        } else {
+                          _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+                        }
                       });
                       _persistAllData();
                     },
@@ -1166,7 +1243,11 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                     onUpdateLands: (newLands) {
                       setState(() {
                         _lands = newLands;
-                        _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        if (_lands.isNotEmpty) {
+                          _activeLand = _lands.firstWhere((l) => l.id == _activeLand.id, orElse: () => _lands.first);
+                        } else {
+                          _activeLand = LandNode(id: "L0", nickname: "Unassigned", size: 0, unit: "Acres", latitude: 0, longitude: 0, description: "No plots");
+                        }
                       });
                       _persistAllData();
                     },
