@@ -23,78 +23,34 @@ import 'dart:math' as math;
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:io';
+import 'dart:ui';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 import 'services/voice_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 // Global dynamic backend configuration with actual machine local IP defaults
+final ValueNotifier<FlutterErrorDetails?> globalErrorNotifier = ValueNotifier<FlutterErrorDetails?>(null);
 String globalBackendUrl = "https://geofarmer-backend.onrender.com";
 String globalGeminiApiKey = "";
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    globalErrorNotifier.value = details;
+  };
+  
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    globalErrorNotifier.value = FlutterErrorDetails(exception: error, stack: stack);
+    return true; // handled
+  };
+
   ErrorWidget.builder = (FlutterErrorDetails details) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text("GeoFarmer Diagnostic Report"),
-          backgroundColor: Colors.deepOrange,
-        ),
-        body: Container(
-          color: const Color(0xFFF9F6F0),
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              const Icon(Icons.bug_report, size: 64, color: Colors.deepOrange),
-              const SizedBox(height: 12),
-              const Text(
-                "A system component threw an exception:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectionArea(
-                      child: Text(
-                        "${details.exception}\n\nStack Trace:\n${details.stack}",
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.redAccent),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
-                    onPressed: () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.clear();
-                      SystemChannels.platform.invokeMethod('SystemNavigator.pop');
-                    },
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                    label: const Text("Clear Cache & Relaunch", style: TextStyle(color: Colors.white)),
-                  ),
-                ],
-              )
-            ],
-          ),
-        ),
-      ),
-    );
+    globalErrorNotifier.value = details;
+    return const SizedBox.shrink(); // will be replaced by the top-level ValueListenableBuilder
   };
   tz.initializeTimeZones();
   try {
@@ -451,20 +407,88 @@ class _GeoKisanAppState extends State<GeoKisanApp> {
   }
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
-    return MaterialApp(
-      title: _isUrdu ? 'Geo Kisaan' : 'GeoFarmer',
-      theme: GeoKisanTheme.lightTheme,
-      darkTheme: GeoKisanTheme.darkTheme,
-      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      home: _isAuthenticated ? GeoKisanHomePage(
-        isUrdu: _isUrdu,
-        isDarkMode: _isDarkMode,
-        activeLanguage: _activeLanguage,
-        onToggleLanguage: _toggleLanguage,
-        onSetLanguage: _setLanguage,
-        onToggleTheme: _toggleTheme,
-      ) : GeoKisanAuthScreen(isUrdu: _isUrdu, isDarkMode: _isDarkMode, activeLanguage: _activeLanguage, onToggleLanguage: _toggleLanguage, onSetLanguage: _setLanguage, onToggleTheme: _toggleTheme, onLoginSuccess: () { setState(() { _isAuthenticated = true; }); }),
+    return ValueListenableBuilder<FlutterErrorDetails?>(
+      valueListenable: globalErrorNotifier,
+      builder: (context, errorDetails, child) {
+        if (errorDetails != null) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: Scaffold(
+              appBar: AppBar(
+                title: const Text("GeoFarmer Diagnostic Report"),
+                backgroundColor: Colors.deepOrange,
+              ),
+              body: Container(
+                color: const Color(0xFFF9F6F0),
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    const Icon(Icons.bug_report, size: 64, color: Colors.deepOrange),
+                    const SizedBox(height: 12),
+                    const Text(
+                      "A fatal exception was caught:",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SingleChildScrollView(
+                          child: SelectionArea(
+                            child: Text(
+                              "${errorDetails.exception}\n\nStack Trace:\n${errorDetails.stack}",
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.redAccent),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                          onPressed: () async {
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.clear();
+                            globalErrorNotifier.value = null;
+                            SystemChannels.platform.invokeMethod('SystemNavigator.pop');
+                          },
+                          icon: const Icon(Icons.refresh, color: Colors.white),
+                          label: const Text("Clear Cache & Relaunch", style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        if (_isLoading) return const MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
+        return MaterialApp(
+          title: _isUrdu ? 'Geo Kisaan' : 'GeoFarmer',
+          theme: GeoKisanTheme.lightTheme,
+          darkTheme: GeoKisanTheme.darkTheme,
+          themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          home: _isAuthenticated ? GeoKisanHomePage(
+            isUrdu: _isUrdu,
+            isDarkMode: _isDarkMode,
+            activeLanguage: _activeLanguage,
+            onToggleLanguage: _toggleLanguage,
+            onSetLanguage: _setLanguage,
+            onToggleTheme: _toggleTheme,
+          ) : GeoKisanAuthScreen(isUrdu: _isUrdu, isDarkMode: _isDarkMode, activeLanguage: _activeLanguage, onToggleLanguage: _toggleLanguage, onSetLanguage: _setLanguage, onToggleTheme: _toggleTheme, onLoginSuccess: () { setState(() { _isAuthenticated = true; }); }),
+        );
+      },
     );
   }
 }

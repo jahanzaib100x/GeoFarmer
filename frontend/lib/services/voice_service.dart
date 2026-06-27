@@ -14,6 +14,9 @@ class VoiceService {
   bool _isSpeaking = false;
   bool _isListening = false;
   bool _sttInitialized = false;
+  bool _ttsInitialized = false;
+  bool _isTtsInitializing = false;
+  bool _isSttInitializing = false;
 
   bool get isSpeaking => _isSpeaking;
   bool get isListening => _isListening;
@@ -21,6 +24,8 @@ class VoiceService {
   // ──────────────── TTS ────────────────
 
   Future<void> initTts() async {
+    if (_ttsInitialized || _isTtsInitializing) return;
+    _isTtsInitializing = true;
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
         try {
@@ -36,8 +41,11 @@ class VoiceService {
       _tts.setStartHandler(() => _isSpeaking = true);
       _tts.setCompletionHandler(() => _isSpeaking = false);
       _tts.setErrorHandler((_) => _isSpeaking = false);
+      _ttsInitialized = true;
     } catch (e) {
       print("[VoiceService] TTS initialization failed: $e");
+    } finally {
+      _isTtsInitializing = false;
     }
   }
 
@@ -81,6 +89,8 @@ class VoiceService {
 
   Future<bool> initStt() async {
     if (_sttInitialized) return true;
+    if (_isSttInitializing) return false;
+    _isSttInitializing = true;
     try {
       _sttInitialized = await _stt.initialize(
         onStatus: (status) {
@@ -96,6 +106,8 @@ class VoiceService {
     } catch (e) {
       print("[VoiceService] STT initialization failed: $e");
       _sttInitialized = false;
+    } finally {
+      _isSttInitializing = false;
     }
     return _sttInitialized;
   }
