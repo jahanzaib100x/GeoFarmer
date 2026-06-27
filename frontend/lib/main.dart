@@ -977,7 +977,7 @@ class _GeoKisanHomePageState extends State<GeoKisanHomePage> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _activeLand.id,
+                        value: _lands.any((l) => l.id == _activeLand.id) ? _activeLand.id : null,
                         decoration: InputDecoration(
                           labelText: widget.isUrdu ? "فعال زرعی پلاٹ منتخب کریں" : "Select Active Land Block",
                           border: const OutlineInputBorder(),
