@@ -87,6 +87,8 @@ class VoiceService {
 
   // ──────────────── STT ────────────────
 
+  Function(String errorMsg)? _currentErrorCallback;
+
   Future<bool> initStt() async {
     if (_sttInitialized) return true;
     if (_isSttInitializing) return false;
@@ -101,6 +103,9 @@ class VoiceService {
         onError: (error) {
           print("[VoiceService] STT Error: $error");
           _isListening = false;
+          if (_currentErrorCallback != null) {
+            _currentErrorCallback!(error.errorMsg);
+          }
         },
       );
     } catch (e) {
@@ -115,12 +120,17 @@ class VoiceService {
   Future<void> startListening({
     required String languageCode,
     required Function(String text, bool isFinal) onResult,
+    required Function(String errorMsg) onError,
     Function(double soundLevel)? onSoundLevel,
   }) async {
+    _currentErrorCallback = onError;
     try {
       if (!_sttInitialized) {
         final ok = await initStt();
-        if (!ok) return;
+        if (!ok) {
+          onError("STT initialization failed");
+          return;
+        }
       }
 
       String locale = _mapToSttLocale(languageCode);
@@ -139,6 +149,18 @@ class VoiceService {
       } catch (le) {
         print("[VoiceService] Locales query failed: $le. Using default mapping: $locale");
       }
+
+      if (languageCode == 'ur') {
+        try {
+          final systemLocales = await _stt.locales();
+          final hasUrdu = systemLocales.any((l) => l.localeId.split('_')[0] == 'ur');
+          if (!hasUrdu && systemLocales.isNotEmpty) {
+            locale = systemLocales.first.localeId;
+            print("[VoiceService] Device does not support Urdu STT. Falling back to default: $locale");
+          }
+        } catch (_) {}
+      }
+
       _isListening = true;
 
       await _stt.listen(
@@ -154,6 +176,7 @@ class VoiceService {
     } catch (e) {
       print("[VoiceService] STT listen failed: $e");
       _isListening = false;
+      onError(e.toString());
     }
   }
 

@@ -63,6 +63,15 @@ void main() async {
     const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
     await flutterLocalNotificationsPlugin.initialize(settings: initializationSettings);
+    try {
+      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+          flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidImplementation?.requestNotificationsPermission();
+      await androidImplementation?.requestExactAlarmsPermission();
+    } catch (e) {
+      print("Failed requesting notification permissions: $e");
+    }
   } catch (e) {
     print("Failed to initialize SharedPreferences or Notifications: $e");
   }
@@ -2648,32 +2657,54 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                           } catch (_) {
                             alertTime = DateTime.now().add(const Duration(seconds: 15));
                           }
-                           final tzTime = tz.TZDateTime.from(alertTime, tz.local);
-                          await flutterLocalNotificationsPlugin.zonedSchedule(
-                            id: math.Random().nextInt(100000),
-                            title: "GeoFarmer Alert",
-                            body: _alertTaskController.text,
-                            scheduledDate: tzTime,
-                            notificationDetails: const NotificationDetails(
-                              android: AndroidNotificationDetails(
-                                "channel_id",
-                                "channel_name",
-                                importance: Importance.max,
-                                priority: Priority.high,
-                                playSound: true,
-                              )
-                            ),
-                            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-                          );
-                          setState(() {
-                            _calendarAlerts.add({
-                              "date": _alertDateController.text,
-                              "time": _alertTimeController.text,
-                              "task": _alertTaskController.text,
-                              "notes": "Custom alarm scheduled"
+                          try {
+                            final difference = alertTime.difference(DateTime.now());
+                            DateTime targetTime = alertTime;
+                            if (difference.isNegative) {
+                              targetTime = DateTime.now().add(const Duration(seconds: 5));
+                            }
+                            final tzTime = tz.TZDateTime.now(tz.local).add(targetTime.difference(DateTime.now()));
+                            
+                            await flutterLocalNotificationsPlugin.zonedSchedule(
+                              id: math.Random().nextInt(100000),
+                              title: "GeoFarmer Alert",
+                              body: _alertTaskController.text,
+                              scheduledDate: tzTime,
+                              notificationDetails: const NotificationDetails(
+                                android: AndroidNotificationDetails(
+                                  "channel_id",
+                                  "channel_name",
+                                  importance: Importance.max,
+                                  priority: Priority.high,
+                                  playSound: true,
+                                )
+                              ),
+                              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                            );
+                            setState(() {
+                              _calendarAlerts.add({
+                                "date": _alertDateController.text,
+                                "time": _alertTimeController.text,
+                                "task": _alertTaskController.text,
+                                "notes": "Custom alarm scheduled"
+                              });
+                              _alertTaskController.clear();
                             });
-                            _alertTaskController.clear();
-                          });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Alarm Scheduled Successfully!"),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          } catch (e) {
+                            print("Notification schedule failed: $e");
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("Alarm Schedule Failed: $e"),
+                                duration: const Duration(seconds: 3),
+                              ),
+                            );
+                          }
                         }
                       }),
                     ],
@@ -2894,7 +2925,7 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(widget.isUrdu ? "اے آئی موسم اور آبپاشی کا خلاصہ" : "AI Weather & Irrigation Insight", style: const TextStyle(fontWeight: FontWeight.bold, color: GeoKisanTheme.primaryGreen)),
-                                IconButton(icon: const Icon(Icons.volume_up, color: GeoKisanTheme.primaryGreen), onPressed: () => _speak(widget.isUrdu ? _waterSummaryUr : _waterSummaryEn)),
+                                SpeakerButton(text: widget.isUrdu ? _waterSummaryUr : _waterSummaryEn, languageCode: _localActiveLanguage),
                               ],
                             ),
                             Text(widget.isUrdu ? _waterSummaryUr : _waterSummaryEn, style: const TextStyle(fontSize: 12)),
@@ -3599,6 +3630,15 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                                 }
                               });
                             },
+                            onError: (error) {
+                              print("Chatbot voice recognition error: $error");
+                              setState(() {
+                                _isChatbotListening = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(widget.isUrdu ? "صوتی ان پٹ میں خرابی" : "Voice recognition failed: $error")),
+                              );
+                            },
                           );
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -3802,11 +3842,9 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.volume_up, color: GeoKisanTheme.primaryGreen),
-                      onPressed: () {
-                        _speak(widget.isUrdu ? section.contentUr : section.contentEn);
-                      },
+                    SpeakerButton(
+                      text: widget.isUrdu ? section.contentUr : section.contentEn,
+                      languageCode: _localActiveLanguage,
                     ),
                     const Icon(Icons.keyboard_arrow_down),
                   ],
@@ -3823,6 +3861,98 @@ class _GeoKisanSubsystemPageState extends State<GeoKisanSubsystemPage> {
               ),
             )).toList(),
             const Divider(height: 32),
+            // Hardware Store Section (New Premium Store feature!)
+            Text(
+              widget.isUrdu ? "آبِ رسی سمارٹ اسٹور" : "Aab-e-Rasi IoT Hardware Store",
+              style: GeoKisanTheme.getHeaderStyle(isUrdu: widget.isUrdu, fontSize: 14, color: GeoKisanTheme.primaryGreen),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Image.asset(
+                    "assets/aab_e_rasi_controller.png",
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        height: 180,
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                        ),
+                      );
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              widget.isUrdu ? "آبِ رسی سمارٹ آئی او ٹی کٹ" : "Aab-e-Rasi Smart IoT Kit",
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const Text(
+                              "Rs. 2,999",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: GeoKisanTheme.primaryGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.isUrdu
+                              ? "مکمل آبپاشی کنٹرولر کٹ: مٹی کی نمی کے سینسرز، درجہ حرارت و نمی کا سینسر (DHT22)، اور پمپ ریلے سوئچ۔ آپ کی فصلوں کے لیے خودکار پانی کا بہترین نظام۔"
+                              : "Complete irrigation controller kit: Dual soil moisture sensors, ambient temp/humidity sensor (DHT22), and heavy-duty pump relay switch. Automated watering optimized for your fields.",
+                          style: const TextStyle(fontSize: 12, height: 1.4, color: Colors.black54),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: GeoKisanTheme.primaryGreen,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    widget.isUrdu
+                                        ? "آرڈر بک ہو گیا! ہمارا نمائندہ جلد رابطہ کرے گا۔"
+                                        : "Order Placed! Our team will contact you shortly.",
+                                  ),
+                                  backgroundColor: GeoKisanTheme.primaryGreen,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.shopping_cart, color: Colors.white),
+                            label: Text(
+                              widget.isUrdu ? "ابھی خریدیں" : "Buy Now",
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 32),
+
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -5500,6 +5630,13 @@ class _VoiceNavigationSheetState extends State<_VoiceNavigationSheet> with Singl
             }
           });
         }
+      },
+      onError: (error) {
+        print("VoiceNavigationSheet error: $error");
+        setState(() {
+          _isListening = false;
+          _transcribedText = widget.isUrdu ? "صوتی رہنمائی ناکام ہو گئی" : "Voice recognition failed";
+        });
       },
     );
   }
